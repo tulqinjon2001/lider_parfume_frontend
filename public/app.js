@@ -1,9 +1,19 @@
 const PLACEHOLDER = 'images/placeholder.svg';
 
 let PRODUCTS = [];
+let CATALOG = { brands: [], categories: [] };
+let filterBrand = '';
+let filterCategory = '';
 const cart = {};
 const qtyState = {};
 const selectedVariant = {};
+
+const pickerState = {
+  productId: null,
+  scent: null,
+  size: null,
+  qty: 1,
+};
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -14,6 +24,118 @@ function getVariant(productId, variantId) {
 
 function getSelectedVariant(product) {
   return product.variants.find((v) => v.id === selectedVariant[product.id]) || product.variants[0];
+}
+
+function getUniqueScents(product) {
+  return [...new Set(product.variants.map((v) => v.scent))];
+}
+
+function getPriceForSize(product, size) {
+  const fromSizes = product.sizes?.find((s) => s.label === size);
+  if (fromSizes) return fromSizes.price;
+  const variant = product.variants.find((v) => v.size === size);
+  return variant?.price ?? 0;
+}
+
+function getUniqueSizes(product) {
+  if (product.sizes?.length) {
+    return product.sizes.map((s) => s.label);
+  }
+  return [...new Set(product.variants.map((v) => v.size))];
+}
+
+function needsPicker(product) {
+  return getUniqueScents(product).length > 1 && getUniqueSizes(product).length > 1;
+}
+
+function getSizesForScent(product, scent) {
+  return [...new Set(product.variants.filter((v) => v.scent === scent).map((v) => v.size))];
+}
+
+function getScentsForSize(product, size) {
+  return [...new Set(product.variants.filter((v) => v.size === size).map((v) => v.scent))];
+}
+
+function getVariantsForSize(product, size) {
+  return product.variants.filter((v) => v.size === size);
+}
+
+function getImageForScent(product, scent, size) {
+  const variant = size
+    ? product.variants.find((v) => v.scent === scent && v.size === size)
+    : product.variants.find((v) => v.scent === scent);
+  return variant?.image || PLACEHOLDER;
+}
+
+function renderScentGrid(product, size, selectedScent) {
+  const variants = getVariantsForSize(product, size);
+  $('#scentGrid').innerHTML = variants.map((v) => `
+    <button type="button" class="scent-option ${v.scent === selectedScent ? 'selected' : ''}" data-scent="${v.scent}">
+      <img src="${v.image}" alt="${v.scent}" onerror="imgFallback(event)">
+      <span>${v.scent}</span>
+    </button>
+  `).join('');
+}
+
+function resolveVariant(product, scent, size) {
+  return (
+    product.variants.find((v) => v.scent === scent && v.size === size) ||
+    product.variants.find((v) => v.scent === scent) ||
+    product.variants.find((v) => v.size === size) ||
+    product.variants[0]
+  );
+}
+
+function getMinPrice(product) {
+  if (product.sizes?.length) {
+    return Math.min(...product.sizes.map((s) => s.price));
+  }
+  return Math.min(...product.variants.map((v) => v.price));
+}
+
+function productMeta(p) {
+  const parts = [p.brand, p.category].filter(Boolean);
+  if (!parts.length) return '';
+  return `<div class="product-meta">${parts.join(' · ')}</div>`;
+}
+
+function filteredProducts() {
+  return PRODUCTS.filter((p) => {
+    if (filterBrand && p.brand !== filterBrand) return false;
+    if (filterCategory && p.category !== filterCategory) return false;
+    return true;
+  });
+}
+
+function renderFilters() {
+  const brandOpts = CATALOG.brands.map((b) => `
+    <option value="${b}" ${filterBrand === b ? 'selected' : ''}>${b}</option>
+  `).join('');
+
+  const catOpts = CATALOG.categories.map((c) => `
+    <option value="${c}" ${filterCategory === c ? 'selected' : ''}>${c}</option>
+  `).join('');
+
+  $('#filters').innerHTML = `
+    <select id="filterBrand" class="filter-select">
+      <option value="">Barcha brendlar</option>
+      ${brandOpts}
+    </select>
+    <select id="filterCategory" class="filter-select">
+      <option value="">Barcha kategoriyalar</option>
+      ${catOpts}
+    </select>
+  `;
+
+  $('#filterBrand').addEventListener('change', (e) => {
+    filterBrand = e.target.value;
+    renderProducts();
+  });
+
+  $('#filterCategory').addEventListener('change', (e) => {
+    filterCategory = e.target.value;
+    renderProducts();
+  });
 }
 
 function formatPrice(n) {
@@ -27,14 +149,37 @@ function imgFallback(e) {
 
 function renderProducts() {
   const container = $('#products');
+  const list = filteredProducts();
 
-  if (!PRODUCTS.length) {
+  if (!list.length) {
     container.innerHTML = '<div class="cart-empty">Mahsulotlar yo\'q</div>';
     return;
   }
 
-  container.innerHTML = PRODUCTS.map((p) => {
+  container.innerHTML = list.map((p) => {
     if (!p.variants?.length) return '';
+
+    if (needsPicker(p)) {
+      const minPrice = getMinPrice(p);
+      const preview = p.variants[0];
+
+      return `
+        <div class="product-card pickable" data-product-id="${p.id}" data-action="open-picker">
+          ${productMeta(p)}
+          <div class="product-name">${p.name}</div>
+          <div class="product-preview">
+            <img
+              src="${preview.image}"
+              alt="${p.name}"
+              loading="lazy"
+              onerror="imgFallback(event)"
+            >
+          </div>
+          <div class="product-price-range">dan <span>${formatPrice(minPrice)}</span></div>
+          <button type="button" class="pick-btn" data-product-id="${p.id}" data-action="open-picker">Tanlash</button>
+        </div>
+      `;
+    }
 
     qtyState[p.id] = qtyState[p.id] ?? 1;
     if (!selectedVariant[p.id]) selectedVariant[p.id] = p.variants[0].id;
@@ -55,6 +200,7 @@ function renderProducts() {
 
     return `
       <div class="product-card" data-product-id="${p.id}">
+        ${productMeta(p)}
         <div class="product-name">${p.name}</div>
         <div class="product-preview">
           <img
@@ -94,6 +240,65 @@ function selectVariant(productId, variantId) {
   document.querySelectorAll(`.variant-thumb[data-product-id="${productId}"]`).forEach((el) => {
     el.classList.toggle('selected', el.dataset.variantId === variantId);
   });
+}
+
+function updatePickerUI() {
+  const product = PRODUCTS.find((p) => p.id === pickerState.productId);
+  if (!product) return;
+
+  const { scent, size } = pickerState;
+  const price = getPriceForSize(product, size);
+  const image = getImageForScent(product, scent, size);
+
+  $('#modalPreview').src = image;
+  $('#modalPreview').onerror = imgFallback;
+  const meta = [product.brand, product.category].filter(Boolean).join(' · ');
+  $('#modalBrand').textContent = meta || '';
+  $('#modalTitle').textContent = `${product.name} — ${scent}`;
+  $('#modalPrice').textContent = formatPrice(price);
+  $('#modalQty').textContent = pickerState.qty;
+  $('#pickerSummary').innerHTML = `Tanlangan: <strong>${scent} · ${size}</strong>`;
+
+  renderScentGrid(product, size, scent);
+
+  document.querySelectorAll('.size-option').forEach((el) => {
+    el.classList.toggle('selected', el.dataset.size === size);
+    el.textContent = `${el.dataset.size} — ${formatPrice(getPriceForSize(product, el.dataset.size))}`;
+  });
+}
+
+function openProductPicker(productId) {
+  const product = PRODUCTS.find((p) => p.id === productId);
+  if (!product || !needsPicker(product)) return;
+
+  const firstVariant = product.variants[0];
+  const sizes = getUniqueSizes(product);
+
+  pickerState.productId = productId;
+  pickerState.size = firstVariant.size;
+  pickerState.scent = getScentsForSize(product, firstVariant.size)[0];
+  pickerState.qty = 1;
+
+  $('#sizeOptions').innerHTML = sizes.map((s) => `
+    <button type="button" class="size-option" data-size="${s}">${s}</button>
+  `).join('');
+
+  updatePickerUI();
+
+  $('#productModal').classList.add('open');
+  $('#productModal').setAttribute('aria-hidden', 'false');
+  $('#overlay').classList.add('open');
+}
+
+function closeProductPicker() {
+  $('#productModal').classList.remove('open');
+  $('#productModal').setAttribute('aria-hidden', 'true');
+
+  if (!$('#cartPanel').classList.contains('open')) {
+    $('#overlay').classList.remove('open');
+  }
+
+  pickerState.productId = null;
 }
 
 function updateQtyUI(productId) {
@@ -139,32 +344,58 @@ function renderCart() {
   `).join('');
 }
 
+function addToCartFromVariant(product, variant, qty) {
+  const key = `${product.id}-${variant.scent}-${variant.size}`;
+
+  if (cart[key]) {
+    cart[key].qty += qty;
+  } else {
+    cart[key] = {
+      variantId: key,
+      productId: product.id,
+      name: product.name,
+      scent: variant.scent,
+      size: variant.size,
+      price: getPriceForSize(product, variant.size),
+      image: variant.image,
+      qty,
+    };
+  }
+}
+
 function addToCart(productId) {
   const qty = qtyState[productId];
   if (!qty) return;
 
   const product = PRODUCTS.find((p) => p.id === productId);
   const variant = getSelectedVariant(product);
-  const key = variant.id;
 
-  if (cart[key]) {
-    cart[key].qty += qty;
-  } else {
-    cart[key] = {
-      variantId: variant.id,
-      productId: product.id,
-      name: product.name,
-      scent: variant.scent,
-      size: variant.size,
-      price: variant.price,
-      image: variant.image,
-      qty,
-    };
-  }
+  addToCartFromVariant(product, variant, qty);
 
   qtyState[productId] = 1;
   updateQtyUI(productId);
   renderCart();
+  showToast('Savatga qo\'shildi');
+}
+
+function addFromPicker() {
+  const product = PRODUCTS.find((p) => p.id === pickerState.productId);
+  if (!product) return;
+
+  const variant = resolveVariant(product, pickerState.scent, pickerState.size);
+  const price = getPriceForSize(product, pickerState.size);
+
+  const cartVariant = {
+    ...variant,
+    price,
+    image: getImageForScent(product, pickerState.scent, pickerState.size),
+    scent: pickerState.scent,
+    size: pickerState.size,
+  };
+
+  addToCartFromVariant(product, cartVariant, pickerState.qty);
+  renderCart();
+  closeProductPicker();
   showToast('Savatga qo\'shildi');
 }
 
@@ -176,16 +407,44 @@ function showToast(msg) {
 }
 
 function openCart() {
+  closeProductPicker();
   $('#cartPanel').classList.add('open');
   $('#overlay').classList.add('open');
 }
 
 function closeCart() {
   $('#cartPanel').classList.remove('open');
-  $('#overlay').classList.remove('open');
+  if (!$('#productModal').classList.contains('open')) {
+    $('#overlay').classList.remove('open');
+  }
 }
 
 document.addEventListener('click', (e) => {
+  const openPicker = e.target.closest('[data-action="open-picker"]');
+  if (openPicker) {
+    openProductPicker(Number(openPicker.dataset.productId));
+    return;
+  }
+
+  const scentBtn = e.target.closest('.scent-option');
+  if (scentBtn) {
+    pickerState.scent = scentBtn.dataset.scent;
+    updatePickerUI();
+    return;
+  }
+
+  const sizeBtn = e.target.closest('.size-option');
+  if (sizeBtn) {
+    const product = PRODUCTS.find((p) => p.id === pickerState.productId);
+    pickerState.size = sizeBtn.dataset.size;
+    const scents = getScentsForSize(product, pickerState.size);
+    if (!scents.includes(pickerState.scent)) {
+      pickerState.scent = scents[0];
+    }
+    updatePickerUI();
+    return;
+  }
+
   const thumb = e.target.closest('.variant-thumb');
   if (thumb) {
     selectVariant(Number(thumb.dataset.productId), thumb.dataset.variantId);
@@ -221,9 +480,25 @@ document.addEventListener('click', (e) => {
   }
 });
 
+$('#closeProductModal').addEventListener('click', closeProductPicker);
+$('#modalAddBtn').addEventListener('click', addFromPicker);
+$('#modalPlus').addEventListener('click', () => {
+  pickerState.qty++;
+  $('#modalQty').textContent = pickerState.qty;
+});
+$('#modalMinus').addEventListener('click', () => {
+  if (pickerState.qty > 1) {
+    pickerState.qty--;
+    $('#modalQty').textContent = pickerState.qty;
+  }
+});
+
 $('#cartBtn').addEventListener('click', openCart);
 $('#closeCart').addEventListener('click', closeCart);
-$('#overlay').addEventListener('click', closeCart);
+$('#overlay').addEventListener('click', () => {
+  closeProductPicker();
+  closeCart();
+});
 
 $('#orderForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -274,8 +549,13 @@ $('#orderForm').addEventListener('submit', async (e) => {
 
 async function init() {
   try {
-    const res = await fetch('/api/products');
-    PRODUCTS = await res.json();
+    const [productsRes, catalogRes] = await Promise.all([
+      fetch('/api/products'),
+      fetch('/api/catalog'),
+    ]);
+    PRODUCTS = await productsRes.json();
+    CATALOG = await catalogRes.json();
+    renderFilters();
     renderProducts();
   } catch {
     $('#products').innerHTML = '<div class="cart-empty">Yuklanmadi</div>';

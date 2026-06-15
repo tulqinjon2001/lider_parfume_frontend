@@ -1,17 +1,58 @@
-const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getSupabase } = require('./supabase');
 
-const DATA_FILE = path.join(__dirname, '../data/products.json');
 const IMAGES_DIR = path.join(__dirname, '../public/images');
 
-function readProducts() {
-  const raw = fs.readFileSync(DATA_FILE, 'utf8');
-  return JSON.parse(raw);
+function mapProduct(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    brand: row.brand || '',
+    category: row.category || '',
+    sizes: row.sizes || [],
+    variants: row.variants || [],
+  };
 }
 
-function writeProducts(products) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(products, null, 2), 'utf8');
+async function readProducts() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, name, brand, category, sizes, variants')
+    .order('id');
+
+  if (error) throw error;
+  return (data || []).map(mapProduct);
+}
+
+async function writeProducts(products) {
+  const supabase = getSupabase();
+  const { data: existing, error: fetchError } = await supabase.from('products').select('id');
+  if (fetchError) throw fetchError;
+
+  const newIds = new Set(products.map((p) => p.id));
+  const toDelete = (existing || []).map((r) => r.id).filter((id) => !newIds.has(id));
+
+  if (toDelete.length) {
+    const { error: deleteError } = await supabase.from('products').delete().in('id', toDelete);
+    if (deleteError) throw deleteError;
+  }
+
+  if (!products.length) return;
+
+  const rows = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    brand: p.brand || '',
+    category: p.category || '',
+    sizes: p.sizes || [],
+    variants: p.variants || [],
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase.from('products').upsert(rows, { onConflict: 'id' });
+  if (error) throw error;
 }
 
 function nextProductId(products) {

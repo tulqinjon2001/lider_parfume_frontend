@@ -22,6 +22,7 @@
   </header>
 
   <main>
+    <div class="filters" id="filters"></div>
     <div class="products" id="products"></div>
   </main>
 
@@ -45,6 +46,37 @@
   </aside>
 
   <div class="overlay" id="overlay"></div>
+
+  <div class="product-modal" id="productModal" aria-hidden="true">
+    <div class="product-modal-dialog">
+      <button class="product-modal-close" id="closeProductModal" type="button" aria-label="Yopish">&times;</button>
+      <div class="product-modal-body">
+        <div class="product-modal-left">
+          <div class="product-modal-preview">
+            <img id="modalPreview" src="" alt="">
+          </div>
+          <p class="picker-label">Hidni rasmdan tanlang:</p>
+          <div class="scent-grid" id="scentGrid"></div>
+        </div>
+        <div class="product-modal-right">
+          <p class="product-modal-brand" id="modalBrand"></p>
+          <h2 class="product-modal-title" id="modalTitle"></h2>
+          <div class="product-modal-price">
+            <span id="modalPrice"></span>
+          </div>
+          <p class="picker-label">Hajmni tanlang:</p>
+          <div class="size-options" id="sizeOptions"></div>
+          <div class="picker-summary" id="pickerSummary"></div>
+          <div class="picker-qty">
+            <button type="button" class="qty-btn" id="modalMinus">−</button>
+            <span class="qty-value" id="modalQty">1</span>
+            <button type="button" class="qty-btn" id="modalPlus">+</button>
+          </div>
+          <button type="button" class="add-btn modal-add-btn" id="modalAddBtn">Savatga qo'shish</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="toast" id="toast"></div>
 

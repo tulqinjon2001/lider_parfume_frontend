@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin — Lider Parfum</title>
+  <title>Brend va Kategoriya — Lider Parfum</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin.css">
@@ -20,29 +20,32 @@
     </form>
   </div>
 
-  <div id="adminApp" class="admin-app hidden">
+  <div id="catalogApp" class="admin-app hidden">
     <header class="admin-header">
       <div class="admin-header-left">
         <a href="/" class="admin-logo">Lider Parfum</a>
         <nav class="admin-nav">
-          <a href="/admin" class="admin-nav-link is-active">Mahsulotlar</a>
-          <a href="/admin/catalog" class="admin-nav-link">Brend & Kategoriya</a>
+          <a href="/admin" class="admin-nav-link">Mahsulotlar</a>
+          <a href="/admin/catalog" class="admin-nav-link is-active">Brend & Kategoriya</a>
         </nav>
       </div>
       <div class="header-actions">
-        <button type="button" id="addProductBtn" class="btn-primary">+ Mahsulot</button>
         <button type="button" id="saveBtn" class="btn-save">Saqlash</button>
         <button type="button" id="logoutBtn" class="btn-ghost">Chiqish</button>
       </div>
     </header>
 
     <main class="admin-main">
-      <div id="productsOverview" class="products-overview"></div>
+      <div class="page-head">
+        <h1 class="page-title">Brend va Kategoriya</h1>
+        <p class="page-desc">Mahsulotlar uchun brend va kategoriya ro'yxatini boshqaring</p>
+      </div>
+      <div class="catalog-page-grid" id="catalogContent"></div>
     </main>
   </div>
 
   <div class="toast" id="toast"></div>
 
-  <script src="/admin.js"></script>
+  <script src="/admin-catalog.js"></script>
 </body>
 </html>

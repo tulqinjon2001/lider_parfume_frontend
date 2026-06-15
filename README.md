@@ -7,7 +7,17 @@ npm install
 cp .env.example .env
 ```
 
-`.env` faylida Telegram va admin parolini kiriting.
+`.env` faylida Telegram, admin paroli va Supabase kalitlarini kiriting.
+
+## Supabase sozlash
+
+1. [supabase.com](https://supabase.com) da loyiha yarating
+2. **SQL Editor** da `supabase/schema.sql` faylini to'liq nusxalab **RUN** bosing
+3. **Project Settings → API** dan oling:
+   - `SUPABASE_URL` → Project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` → **service_role** (secret) — `sb_publishable_` emas!
+
+`PGRST205` xatosi — jadvallar hali yaratilmagan. `schema.sql` ni qayta ishga tushiring.
 
 ## Ishga tushirish
 
@@ -22,12 +32,13 @@ npm start
 
 1. `.env` da `ADMIN_PASSWORD` o'rnating
 2. `/admin` ga kiring
-3. Mahsulot qo'shing, variantlar (hid, o'lcham, narx) kiriting
-4. Rasm ustiga bosing — fayl yuklang
-5. **Saqlash** tugmasini bosing
+3. Brend va kategoriya qo'shing
+4. Mahsulot qo'shing, variantlar (hid, o'lcham) kiriting
+5. Rasm yuklang (fayl yoki link)
+6. **Saqlash** tugmasini bosing
 
-Mahsulotlar `data/products.json` da saqlanadi.
-Rasmlar `public/images/` papkasida.
+Mahsulotlar Supabase da saqlanadi.
+Rasmlar `public/images/` papkasida (yoki tashqi link).
 
 ## Telegram bot
 
