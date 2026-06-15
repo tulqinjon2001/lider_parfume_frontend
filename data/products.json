@@ -1,0 +1,104 @@
+[
+  {
+    "id": 1,
+    "name": "Dior Sauvage",
+    "variants": [
+      { "id": "1-edt-50", "scent": "EDT", "size": "50ml", "price": 650000, "image": "images/dior-sauvage-edt-50.jpg" },
+      { "id": "1-edt-100", "scent": "EDT", "size": "100ml", "price": 950000, "image": "images/dior-sauvage-edt-100.jpg" },
+      { "id": "1-edp-100", "scent": "EDP", "size": "100ml", "price": 1100000, "image": "images/dior-sauvage-edp-100.jpg" }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Chanel No.5",
+    "variants": [
+      { "id": "2-edp-50", "scent": "EDP", "size": "50ml", "price": 850000, "image": "images/chanel-no5-edp-50.jpg" },
+      { "id": "2-edp-100", "scent": "EDP", "size": "100ml", "price": 1200000, "image": "images/chanel-no5-edp-100.jpg" },
+      { "id": "2-parfum-35", "scent": "Parfum", "size": "35ml", "price": 1500000, "image": "images/chanel-no5-parfum-35.jpg" }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Tom Ford Black Orchid",
+    "variants": [
+      { "id": "3-edp-50", "scent": "EDP", "size": "50ml", "price": 1100000, "image": "images/tf-black-orchid-edp-50.jpg" },
+      { "id": "3-edp-100", "scent": "EDP", "size": "100ml", "price": 1500000, "image": "images/tf-black-orchid-edp-100.jpg" }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Versace Eros",
+    "variants": [
+      { "id": "4-edt-50", "scent": "EDT", "size": "50ml", "price": 520000, "image": "images/versace-eros-edt-50.jpg" },
+      { "id": "4-edt-100", "scent": "EDT", "size": "100ml", "price": 750000, "image": "images/versace-eros-edt-100.jpg" },
+      { "id": "4-edp-100", "scent": "EDP", "size": "100ml", "price": 880000, "image": "images/versace-eros-edp-100.jpg" }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Armani Code",
+    "variants": [
+      { "id": "5-edt-50", "scent": "EDT", "size": "50ml", "price": 480000, "image": "images/armani-code-edt-50.jpg" },
+      { "id": "5-edt-100", "scent": "EDT", "size": "100ml", "price": 680000, "image": "images/armani-code-edt-100.jpg" }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "YSL Libre",
+    "variants": [
+      { "id": "6-edp-50", "scent": "EDP", "size": "50ml", "price": 680000, "image": "images/ysl-libre-edp-50.jpg" },
+      { "id": "6-edp-90", "scent": "EDP", "size": "90ml", "price": 920000, "image": "images/ysl-libre-edp-90.jpg" },
+      { "id": "6-intense-90", "scent": "Intense", "size": "90ml", "price": 1050000, "image": "images/ysl-libre-intense-90.jpg" }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "Bleu de Chanel",
+    "variants": [
+      { "id": "7-edt-50", "scent": "EDT", "size": "50ml", "price": 780000, "image": "images/bleu-chanel-edt-50.jpg" },
+      { "id": "7-edp-100", "scent": "EDP", "size": "100ml", "price": 1100000, "image": "images/bleu-chanel-edp-100.jpg" },
+      { "id": "7-parfum-100", "scent": "Parfum", "size": "100ml", "price": 1400000, "image": "images/bleu-chanel-parfum-100.jpg" }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "Creed Aventus",
+    "variants": [
+      { "id": "8-edp-50", "scent": "EDP", "size": "50ml", "price": 1800000, "image": "images/creed-aventus-edp-50.jpg" },
+      { "id": "8-edp-100", "scent": "EDP", "size": "100ml", "price": 2800000, "image": "images/creed-aventus-edp-100.jpg" }
+    ]
+  },
+  {
+    "id": 9,
+    "name": "Paco Rabanne 1 Million",
+    "variants": [
+      { "id": "9-edt-50", "scent": "EDT", "size": "50ml", "price": 520000, "image": "images/1million-edt-50.jpg" },
+      { "id": "9-edt-100", "scent": "EDT", "size": "100ml", "price": 720000, "image": "images/1million-edt-100.jpg" },
+      { "id": "9-parfum-50", "scent": "Parfum", "size": "50ml", "price": 950000, "image": "images/1million-parfum-50.jpg" }
+    ]
+  },
+  {
+    "id": 10,
+    "name": "Dolce & Gabbana Light Blue",
+    "variants": [
+      { "id": "10-edt-50", "scent": "EDT", "size": "50ml", "price": 450000, "image": "images/dg-light-blue-edt-50.jpg" },
+      { "id": "10-edt-100", "scent": "EDT", "size": "100ml", "price": 650000, "image": "images/dg-light-blue-edt-100.jpg" }
+    ]
+  },
+  {
+    "id": 11,
+    "name": "Gucci Bloom",
+    "variants": [
+      { "id": "11-edp-50", "scent": "EDP", "size": "50ml", "price": 650000, "image": "images/gucci-bloom-edp-50.jpg" },
+      { "id": "11-edp-100", "scent": "EDP", "size": "100ml", "price": 880000, "image": "images/gucci-bloom-edp-100.jpg" }
+    ]
+  },
+  {
+    "id": 12,
+    "name": "Lattafa Raghba",
+    "variants": [
+      { "id": "12-edp-100", "scent": "EDP", "size": "100ml", "price": 120000, "image": "images/lattafa-raghba-edp-100.jpg" },
+      { "id": "12-edp-200", "scent": "EDP", "size": "200ml", "price": 180000, "image": "images/lattafa-raghba-edp-200.jpg" }
+    ]
+  }
+]

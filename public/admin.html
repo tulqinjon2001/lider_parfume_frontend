@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Lider Parfum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-box">
+      <h1>Admin</h1>
+      <input type="password" id="password" placeholder="Parol" required autofocus>
+      <button type="submit">Kirish</button>
+      <p class="login-error" id="loginError"></p>
+    </form>
+  </div>
+
+  <div id="adminApp" class="admin-app hidden">
+    <header class="admin-header">
+      <h1>Mahsulotlar</h1>
+      <div class="header-actions">
+        <button type="button" id="addProductBtn" class="btn-primary">+ Mahsulot</button>
+        <button type="button" id="saveBtn" class="btn-save">Saqlash</button>
+        <button type="button" id="logoutBtn" class="btn-ghost">Chiqish</button>
+      </div>
+    </header>
+
+    <main id="productList" class="product-list"></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
