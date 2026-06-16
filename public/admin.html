@@ -22,17 +22,29 @@
 
   <div id="adminApp" class="admin-app hidden">
     <header class="admin-header">
-      <div class="admin-header-left">
-        <a href="/" class="admin-logo">Lider Parfum</a>
-        <nav class="admin-nav">
-          <a href="/admin" class="admin-nav-link is-active">Mahsulotlar</a>
-          <a href="/admin/catalog" class="admin-nav-link">Brend & Kategoriya</a>
-        </nav>
+      <nav class="admin-tabs">
+        <a href="/admin" class="admin-tab is-active" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16v4H4V6zm0 8h16v4H4v-4z" />
+          </svg>
+          Mahsulotlar
+        </a>
+        <a href="/admin/catalog" class="admin-tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5h18v2H3V5zm4 4h10v2H7V9zm-4 8h18v2H3v-2zm8-4h10v2H11v-2z" />
+          </svg>
+          Brand va Kategoriya
+        </a>
+      </nav>
+
+      <div class="admin-header-center">
+        <button type="button" id="addProductBtn" class="btn-add" aria-label="Mahsulot qo'shish" title="Mahsulot qo'shish">
+          +
+        </button>
       </div>
+
       <div class="header-actions">
-        <button type="button" id="addProductBtn" class="btn-primary">+ Mahsulot</button>
-        <button type="button" id="saveBtn" class="btn-save">Saqlash</button>
-        <button type="button" id="logoutBtn" class="btn-ghost">Chiqish</button>
+        <button type="button" id="logoutBtn" class="btn-ghost btn-logout">Chiqish</button>
       </div>
     </header>
 

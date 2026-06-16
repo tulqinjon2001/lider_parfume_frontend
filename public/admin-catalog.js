@@ -3,6 +3,7 @@ const TOKEN_KEY = 'lider_admin_token';
 let catalog = { brands: [], categories: [] };
 let products = [];
 let token = localStorage.getItem(TOKEN_KEY);
+let addModalType = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -65,8 +66,9 @@ function catalogCol(type, items, label) {
       <div class="variants-title">${label}lar</div>
       <div class="options-list">${rows || `<p class="sizes-empty">${label} yo'q</p>`}</div>
       <div class="add-option-row">
-        <input type="text" placeholder="Yangi ${label.toLowerCase()}" data-field="new-${type}">
-        <button type="button" class="btn-small" data-action="add-${type}">+</button>
+        <button type="button" class="btn-small btn-add-modal" data-action="open-add-modal" data-type="${type}">
+          + Yangi ${label.toLowerCase()}
+        </button>
       </div>
     </div>
   `;
@@ -79,27 +81,89 @@ function render() {
   `;
 }
 
-function addCatalogItem(type, name) {
-  const key = type === 'brand' ? 'brands' : 'categories';
-  const label = type === 'brand' ? 'Brend' : 'Kategoriya';
-  if (!name) return showToast(`${label} nomini kiriting`);
-  if (catalog[key].includes(name)) return showToast(`${label} mavjud`);
-  catalog[key].push(name);
-  render();
+function openAddModal(type) {
+  addModalType = type;
+  const label = type === 'brand' ? 'brend' : 'kategoriya';
+  $('#addModalTitle').textContent = `Yangi ${label}`;
+  $('#addModalInput').value = '';
+  $('#addModalInput').placeholder = `${label} nomini kiriting`;
+  $('#addModal').classList.remove('hidden');
+  setTimeout(() => $('#addModalInput').focus(), 0);
 }
 
-function deleteCatalogItem(type, idx) {
+function closeAddModal() {
+  addModalType = null;
+  $('#addModal').classList.add('hidden');
+}
+
+async function saveCatalog() {
+  await api('/api/admin/catalog', {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(catalog),
+  });
+}
+
+async function saveProducts() {
+  await api('/api/admin/products', {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(products),
+  });
+}
+
+async function addCatalogItem(type, name) {
+  const key = type === 'brand' ? 'brands' : 'categories';
+  const label = type === 'brand' ? 'Brend' : 'Kategoriya';
+  const trimmed = name.trim();
+
+  if (!trimmed) {
+    showToast(`${label} nomini kiriting`);
+    return false;
+  }
+
+  if (catalog[key].includes(trimmed)) {
+    showToast(`${label} mavjud`);
+    return false;
+  }
+
+  catalog[key].push(trimmed);
+  render();
+
+  try {
+    await saveCatalog();
+    showToast(`${label} qo'shildi`);
+    return true;
+  } catch (err) {
+    catalog[key].pop();
+    render();
+    showToast(err.message);
+    return false;
+  }
+}
+
+async function deleteCatalogItem(type, idx) {
   const key = type === 'brand' ? 'brands' : 'categories';
   const field = type === 'brand' ? 'brand' : 'category';
   const name = catalog[key][idx];
   if (products.some((p) => p[field] === name)) {
-    return showToast(`Bu ${type === 'brand' ? 'brend' : 'kategoriya'} ishlatilmoqda`);
+    showToast(`Bu ${type === 'brand' ? 'brend' : 'kategoriya'} ishlatilmoqda`);
+    return;
   }
-  catalog[key].splice(idx, 1);
+  const [removed] = catalog[key].splice(idx, 1);
   render();
+
+  try {
+    await saveCatalog();
+    showToast('O\'chirildi');
+  } catch (err) {
+    catalog[key].splice(idx, 0, removed);
+    render();
+    showToast(err.message);
+  }
 }
 
-function renameCatalogItem(type, idx, newName) {
+async function renameCatalogItem(type, idx, newName) {
   const key = type === 'brand' ? 'brands' : 'categories';
   const field = type === 'brand' ? 'brand' : 'category';
   const oldName = catalog[key][idx];
@@ -115,24 +179,19 @@ function renameCatalogItem(type, idx, newName) {
     if (p[field] === oldName) p[field] = trimmed;
   });
   render();
-}
 
-async function saveCatalog() {
-  await api('/api/admin/catalog', {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(catalog),
-  });
-
-  if (products.length) {
-    await api('/api/admin/products', {
-      method: 'PUT',
-      headers: authHeaders(),
-      body: JSON.stringify(products),
+  try {
+    await saveCatalog();
+    await saveProducts();
+    showToast('Yangilandi');
+  } catch (err) {
+    catalog[key][idx] = oldName;
+    products.forEach((p) => {
+      if (p[field] === trimmed) p[field] = oldName;
     });
+    render();
+    showToast(err.message);
   }
-
-  showToast('Saqlandi');
 }
 
 function showApp() {
@@ -170,30 +229,26 @@ $('#logoutBtn').addEventListener('click', () => {
   showLogin();
 });
 
-$('#saveBtn').addEventListener('click', () => saveCatalog().catch((e) => showToast(e.message)));
-
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.dataset.field === 'new-brand') {
+  if (e.key === 'Escape' && !$('#addModal').classList.contains('hidden')) {
     e.preventDefault();
-    addCatalogItem('brand', e.target.value.trim());
-    e.target.value = '';
+    closeAddModal();
     return;
   }
-  if (e.key === 'Enter' && e.target.dataset.field === 'new-category') {
+  if (e.key === 'Enter' && e.target.id === 'addModalInput') {
     e.preventDefault();
-    addCatalogItem('category', e.target.value.trim());
-    e.target.value = '';
+    $('#addModalSaveBtn').click();
   }
 });
 
 document.addEventListener('change', (e) => {
   const { field, index } = e.target.dataset;
   if (field === 'edit-brand') {
-    renameCatalogItem('brand', Number(index), e.target.value);
+    renameCatalogItem('brand', Number(index), e.target.value).catch((err) => showToast(err.message));
     return;
   }
   if (field === 'edit-category') {
-    renameCatalogItem('category', Number(index), e.target.value);
+    renameCatalogItem('category', Number(index), e.target.value).catch((err) => showToast(err.message));
   }
 });
 
@@ -201,24 +256,35 @@ document.addEventListener('click', (e) => {
   const action = e.target.dataset.action;
   if (!action) return;
 
-  if (action === 'add-brand') {
-    const input = document.querySelector('input[data-field="new-brand"]');
-    addCatalogItem('brand', input?.value.trim());
-    if (input) input.value = '';
+  if (action === 'open-add-modal') {
+    openAddModal(e.target.dataset.type);
+    return;
+  }
+
+  if (action === 'close-add-modal') {
+    closeAddModal();
+    return;
   }
 
   if (action === 'delete-brand') {
-    deleteCatalogItem('brand', Number(e.target.dataset.index));
-  }
-
-  if (action === 'add-category') {
-    const input = document.querySelector('input[data-field="new-category"]');
-    addCatalogItem('category', input?.value.trim());
-    if (input) input.value = '';
+    deleteCatalogItem('brand', Number(e.target.dataset.index)).catch((err) => showToast(err.message));
+    return;
   }
 
   if (action === 'delete-category') {
-    deleteCatalogItem('category', Number(e.target.dataset.index));
+    deleteCatalogItem('category', Number(e.target.dataset.index)).catch((err) => showToast(err.message));
+  }
+});
+
+$('#addModalSaveBtn').addEventListener('click', async () => {
+  if (!addModalType) return;
+  const ok = await addCatalogItem(addModalType, $('#addModalInput').value);
+  if (ok) closeAddModal();
+});
+
+$('#addModal').addEventListener('click', (e) => {
+  if (e.target.id === 'addModal') {
+    closeAddModal();
   }
 });
 

@@ -5,6 +5,9 @@ let products = [];
 let catalog = { brands: [], categories: [] };
 let editingIndex = null;
 let token = localStorage.getItem(TOKEN_KEY);
+let autoSaveTimer = null;
+let saveInFlight = false;
+let queuedSaveMessage = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -297,7 +300,7 @@ function renderOverview() {
     if (editingIndex !== pi) return [main];
     return [main, `
       <tr class="editor-row" id="editor-row-${pi}">
-        <td colspan="7">
+        <td colspan="6">
           <div class="editor-panel">
             ${renderProductEditor(pi, p)}
           </div>
@@ -314,12 +317,11 @@ function renderOverview() {
       <table class="products-table">
         <thead>
           <tr>
-            <th class="col-thumb"></th>
-            <th>Nomi</th>
-            <th>Brend</th>
+            <th>Mahsulot Nomi</th>
+            <th>Brand</th>
             <th>Kategoriya</th>
-            <th class="col-num">Variantlar</th>
-            <th>Narx</th>
+            <th class="col-num">Turlari</th>
+            <th>Narxi</th>
             <th class="col-actions">Amallar</th>
           </tr>
         </thead>
@@ -332,28 +334,29 @@ function renderOverview() {
 
 function productTableRow(p, pi) {
   const isActive = editingIndex === pi;
+  const editIcon = isActive
+    ? `<svg viewBox="0 0 24 24" class="edit-icon" aria-hidden="true">
+        <path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L12 13.41l-6.29 6.3-1.42-1.42L10.59 12 4.29 5.71 5.7 4.29 12 10.59l6.29-6.3z" />
+      </svg>`
+    : `<svg viewBox="0 0 24 24" class="edit-icon" aria-hidden="true">
+        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92-9 9.06zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+      </svg>`;
   return `
     <tr class="product-row ${isActive ? 'is-active' : ''}" data-product-index="${pi}">
-      <td>
-        <img class="product-thumb" src="${getProductThumb(p)}" alt="" onerror="this.src='${PLACEHOLDER}'">
-      </td>
-      <td>
-        <input
-          type="text"
-          class="table-input"
-          value="${esc(p.name)}"
-          data-field="name"
-          data-index="${pi}"
-          placeholder="Mahsulot nomi"
-        >
-      </td>
-      <td><span class="table-meta">${p.brand ? esc(p.brand) : '—'}</span></td>
-      <td><span class="table-meta">${p.category ? esc(p.category) : '—'}</span></td>
+      <td><span class="table-name-text">${esc(p.name) || '—'}</span></td>
+      <td><span class="table-brand">${p.brand ? esc(p.brand) : '—'}</span></td>
+      <td><span class="table-pill">${p.category ? esc(p.category) : '—'}</span></td>
       <td class="col-num">${p.variants?.length || 0}</td>
       <td class="col-price">${getPriceRange(p)}</td>
       <td class="col-actions">
-        <button type="button" class="btn-small btn-edit ${isActive ? 'is-open' : ''}" data-action="edit-product" data-index="${pi}">
-          ${isActive ? 'Yopish' : 'Tahrirlash'}
+        <button
+          type="button"
+          class="btn-small btn-edit ${isActive ? 'is-open' : ''}"
+          data-action="edit-product"
+          data-index="${pi}"
+          title="${isActive ? 'Yopish' : 'Tahrirlash'}"
+        >
+          ${editIcon}
         </button>
       </td>
     </tr>`;
@@ -373,6 +376,17 @@ function renderProductEditor(pi, p) {
         </div>
       </div>
       <div class="product-meta-edit">
+        <div class="meta-field">
+          <span class="variants-title">Mahsulot nomi</span>
+          <input
+            type="text"
+            class="table-input"
+            value="${esc(p.name)}"
+            data-field="name"
+            data-index="${pi}"
+            placeholder="Mahsulot nomi"
+          >
+        </div>
         <div class="meta-field">
           <span class="variants-title">Brend</span>
           ${metaPicker('brand', catalog.brands, p.brand || '', pi)}
@@ -446,7 +460,7 @@ function esc(str) {
   return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-async function saveProducts() {
+async function saveProducts(message = 'Saqlandi') {
   products.forEach((p) => {
     ensureSizes(p);
     syncVariantPrices(p);
@@ -462,7 +476,32 @@ async function saveProducts() {
     body: JSON.stringify(products),
   });
 
-  showToast('Saqlandi');
+  if (message) showToast(message);
+}
+
+function queueAutoSave(message = '', delay = 700) {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    persistProducts(message).catch((err) => showToast(err.message));
+  }, delay);
+}
+
+async function persistProducts(message = '') {
+  if (saveInFlight) {
+    queuedSaveMessage = message;
+    return;
+  }
+  saveInFlight = true;
+  try {
+    await saveProducts(message);
+  } finally {
+    saveInFlight = false;
+    if (queuedSaveMessage !== null) {
+      const nextMessage = queuedSaveMessage;
+      queuedSaveMessage = null;
+      queueAutoSave(nextMessage, 0);
+    }
+  }
 }
 
 async function uploadImage(file, pi, vi) {
@@ -480,7 +519,7 @@ async function uploadImage(file, pi, vi) {
 
   products[pi].variants[vi].image = data.image;
   render();
-  showToast('Rasm yuklandi');
+  await persistProducts('Rasm yuklandi');
 }
 
 async function uploadImageFromUrl(url, pi, vi) {
@@ -492,7 +531,7 @@ async function uploadImageFromUrl(url, pi, vi) {
 
   products[pi].variants[vi].image = data.image;
   render();
-  showToast('Linkdan yuklandi');
+  await persistProducts('Linkdan yuklandi');
 }
 
 function saveExternalUrl(pi, vi, url) {
@@ -502,7 +541,7 @@ function saveExternalUrl(pi, vi, url) {
   }
   products[pi].variants[vi].image = url.trim();
   render();
-  showToast('Link saqlandi');
+  queueAutoSave('Link saqlandi', 0);
 }
 
 function getImageUrlInput(pi, vi) {
@@ -544,8 +583,6 @@ $('#logoutBtn').addEventListener('click', () => {
   showLogin();
 });
 
-$('#saveBtn').addEventListener('click', () => saveProducts().catch((e) => showToast(e.message)));
-
 $('#addProductBtn').addEventListener('click', () => {
   const id = nextProductId();
   products.push({
@@ -559,6 +596,7 @@ $('#addProductBtn').addEventListener('click', () => {
   editingIndex = products.length - 1;
   render();
   scrollToEditor(editingIndex);
+  persistProducts('Mahsulot qo\'shildi').catch((err) => showToast(err.message));
 });
 
 document.addEventListener('input', (e) => {
@@ -569,6 +607,7 @@ document.addEventListener('input', (e) => {
     products[Number(index)].name = e.target.value;
     const title = document.getElementById(`editor-title-${index}`);
     if (title) title.textContent = e.target.value || 'Mahsulot';
+    queueAutoSave();
     return;
   }
 
@@ -583,17 +622,20 @@ document.addEventListener('input', (e) => {
     products[pi].variants.forEach((v) => {
       if (v.size === oldLabel) v.size = newLabel;
     });
+    queueAutoSave();
     return;
   }
 
   if (field === 'size-price') {
     products[pi].sizes[si].price = Number(e.target.value) || 0;
     syncVariantPrices(products[pi]);
+    queueAutoSave();
     return;
   }
 
   if (field === 'scent') {
     products[pi].variants[vi].scent = e.target.value;
+    queueAutoSave();
   }
 });
 
@@ -631,6 +673,7 @@ document.addEventListener('change', (e) => {
   const vi = Number(variant);
   products[pi].variants[vi].size = e.target.value;
   products[pi].variants[vi].price = getSizePrice(products[pi], e.target.value);
+  queueAutoSave();
 });
 
 document.addEventListener('input', (e) => {
@@ -652,11 +695,12 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.meta-picker')) closeAllPickers();
 
-  const action = e.target.dataset.action;
+  const actionEl = e.target.closest('[data-action]');
+  const action = actionEl?.dataset.action;
 
   if (action === 'toggle-picker') {
     e.stopPropagation();
-    const picker = e.target.closest('.meta-picker');
+    const picker = actionEl.closest('.meta-picker');
     const wasOpen = picker.classList.contains('is-open');
     closeAllPickers();
     if (!wasOpen) {
@@ -670,55 +714,46 @@ document.addEventListener('click', (e) => {
 
   if (action === 'pick-meta') {
     e.stopPropagation();
-    const pi = Number(e.target.dataset.index);
-    const field = e.target.dataset.field;
-    products[pi][field] = e.target.dataset.value;
+    const pi = Number(actionEl.dataset.index);
+    const field = actionEl.dataset.field;
+    products[pi][field] = actionEl.dataset.value;
     closeAllPickers();
     render();
+    queueAutoSave();
     return;
   }
 
   if (action === 'show-add-meta') {
     e.stopPropagation();
-    const picker = e.target.closest('.meta-picker');
+    const picker = actionEl.closest('.meta-picker');
     const form = picker.querySelector('.meta-picker-add-form');
     form.classList.remove('hidden');
-    e.target.classList.add('hidden');
+    actionEl.classList.add('hidden');
     requestAnimationFrame(() => picker.querySelector('.meta-picker-add-input')?.focus());
     return;
   }
 
   if (action === 'confirm-add-meta') {
     e.stopPropagation();
-    const pi = Number(e.target.dataset.index);
-    const field = e.target.dataset.field;
+    const pi = Number(actionEl.dataset.index);
+    const field = actionEl.dataset.field;
     const type = field === 'brand' ? 'brand' : 'category';
-    const picker = e.target.closest('.meta-picker');
+    const picker = actionEl.closest('.meta-picker');
     const input = picker.querySelector('.meta-picker-add-input');
     addCatalogItem(type, input?.value || '', pi).then((ok) => {
       if (!ok) return;
       closeAllPickers();
       render();
-      showToast(`${type === 'brand' ? 'Brend' : 'Kategoriya'} qo'shildi`);
+      persistProducts(`${type === 'brand' ? 'Brend' : 'Kategoriya'} qo'shildi`).catch((err) => showToast(err.message));
     });
-    return;
-  }
-
-  const row = e.target.closest('tr[data-product-index]');
-  if (row && !e.target.closest('button, input, select, a, label, .meta-picker')) {
-    const pi = Number(row.dataset.productIndex);
-    const wasOpen = editingIndex === pi;
-    editingIndex = wasOpen ? null : pi;
-    render();
-    if (!wasOpen) scrollToEditor(pi);
     return;
   }
 
   if (!action) return;
 
-  const pi = Number(e.target.dataset.index ?? e.target.dataset.product);
-  const vi = Number(e.target.dataset.variant);
-  const si = Number(e.target.dataset.sizeIndex);
+  const pi = Number(actionEl.dataset.index ?? actionEl.dataset.product);
+  const vi = Number(actionEl.dataset.variant);
+  const si = Number(actionEl.dataset.sizeIndex);
 
   if (action === 'close-editor') {
     editingIndex = null;
@@ -735,12 +770,20 @@ document.addEventListener('click', (e) => {
   }
 
   if (action === 'delete-product') {
-    if (confirm('Mahsulotni o\'chirasizmi?')) {
-      products.splice(pi, 1);
-      if (editingIndex === pi) editingIndex = null;
-      else if (editingIndex !== null && editingIndex > pi) editingIndex -= 1;
+    e.stopPropagation();
+    if (!confirm('Mahsulotni o\'chirasizmi?')) return;
+
+    const [removed] = products.splice(pi, 1);
+    if (editingIndex === pi) editingIndex = null;
+    else if (editingIndex !== null && editingIndex > pi) editingIndex -= 1;
+    render();
+
+    saveProducts('Mahsulot o\'chirildi').catch((err) => {
+      products.splice(pi, 0, removed);
+      if (editingIndex === null) editingIndex = pi;
       render();
-    }
+      showToast(err.message);
+    });
     return;
   }
 
@@ -749,6 +792,7 @@ document.addEventListener('click', (e) => {
     ensureSizes(p);
     p.sizes.push({ label: '', price: 0 });
     render();
+    queueAutoSave('O\'lcham qo\'shildi', 0);
   }
 
   if (action === 'delete-size') {
@@ -759,6 +803,7 @@ document.addEventListener('click', (e) => {
     }
     products[pi].sizes.splice(si, 1);
     render();
+    queueAutoSave('O\'lcham o\'chirildi', 0);
   }
 
   if (action === 'add-variant') {
@@ -773,6 +818,7 @@ document.addEventListener('click', (e) => {
       image: PLACEHOLDER,
     });
     render();
+    queueAutoSave('Variant qo\'shildi', 0);
   }
 
   if (action === 'bulk-add') {
@@ -803,12 +849,13 @@ document.addEventListener('click', (e) => {
     }
 
     render();
-    showToast(`${count} ta variant qo'shildi`);
+    queueAutoSave(`${count} ta variant qo'shildi`, 0);
   }
 
   if (action === 'delete-variant') {
     products[pi].variants.splice(vi, 1);
     render();
+    queueAutoSave('Variant o\'chirildi', 0);
   }
 
   if (action === 'upload-url') {

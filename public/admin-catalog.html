@@ -22,16 +22,25 @@
 
   <div id="catalogApp" class="admin-app hidden">
     <header class="admin-header">
-      <div class="admin-header-left">
-        <a href="/" class="admin-logo">Lider Parfum</a>
-        <nav class="admin-nav">
-          <a href="/admin" class="admin-nav-link">Mahsulotlar</a>
-          <a href="/admin/catalog" class="admin-nav-link is-active">Brend & Kategoriya</a>
-        </nav>
-      </div>
+      <nav class="admin-tabs">
+        <a href="/admin" class="admin-tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 6h16v4H4V6zm0 8h16v4H4v-4z" />
+          </svg>
+          Mahsulotlar
+        </a>
+        <a href="/admin/catalog" class="admin-tab is-active" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5h18v2H3V5zm4 4h10v2H7V9zm-4 8h18v2H3v-2zm8-4h10v2H11v-2z" />
+          </svg>
+          Brand va Kategoriya
+        </a>
+      </nav>
+
+      <div class="admin-header-center"></div>
+
       <div class="header-actions">
-        <button type="button" id="saveBtn" class="btn-save">Saqlash</button>
-        <button type="button" id="logoutBtn" class="btn-ghost">Chiqish</button>
+        <button type="button" id="logoutBtn" class="btn-ghost btn-logout">Chiqish</button>
       </div>
     </header>
 
@@ -42,6 +51,22 @@
       </div>
       <div class="catalog-page-grid" id="catalogContent"></div>
     </main>
+  </div>
+
+  <div id="addModal" class="modal-overlay hidden">
+    <div class="modal-dialog catalog-add-modal">
+      <div class="modal-header">
+        <h2 id="addModalTitle">Yangi qiymat</h2>
+        <button type="button" class="modal-close" data-action="close-add-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="addModalInput" class="catalog-add-input" placeholder="">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-ghost" data-action="close-add-modal">Bekor qilish</button>
+        <button type="button" class="btn-primary" id="addModalSaveBtn">Saqlash</button>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

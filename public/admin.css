@@ -119,6 +119,74 @@ body {
   box-shadow: var(--shadow);
 }
 
+/* Tabs (skrinshot uslubi) */
+.admin-tabs {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.admin-tab svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.admin-tab.is-active {
+  background: #0b6b55;
+  border-color: #0b6b55;
+  color: #fff;
+}
+
+.admin-header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 140px;
+}
+
+.btn-add {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  color: #0b6b55;
+  font-size: 2rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-add:hover {
+  background: var(--surface2);
+  border-color: #ccc;
+}
+
+.btn-logout {
+  padding: 0.55rem 1rem;
+}
+
 .admin-header-left {
   display: flex;
   align-items: center;
@@ -334,8 +402,8 @@ button {
   background: var(--surface2);
   font-size: 0.68rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
+  text-transform: none;
+  letter-spacing: 0.02em;
   color: var(--text-muted);
 }
 
@@ -393,19 +461,50 @@ button {
 }
 
 .btn-edit {
-  background: var(--accent);
-  color: #fff;
+  background: transparent;
+  color: var(--text-muted);
   border: none;
+  padding: 0.25rem;
 }
 
 .btn-edit:hover {
-  background: var(--accent-hover);
+  background: var(--surface2);
+  color: var(--text);
 }
 
 .btn-edit.is-open {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
+}
+
+.edit-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+.table-brand {
+  font-weight: 500;
+}
+
+.table-name-text {
+  display: block;
+  font-weight: 600;
+}
+
+.table-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #dbe8ff;
+  color: #1e4aa6;
+  font-weight: 600;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .editor-toolbar {
@@ -463,6 +562,16 @@ button {
 .table-input:focus {
   border-color: var(--highlight);
   box-shadow: 0 0 0 2px rgba(138, 115, 73, 0.1);
+}
+
+/* Listdagi input oddiy tekstdek ko'rinsin */
+.table-name-input {
+  min-width: 0;
+  width: 100%;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  font-weight: 600;
 }
 
 .table-meta {
@@ -772,30 +881,38 @@ button {
   margin-top: 0.25rem;
 }
 
-.add-option-row input {
-  flex: 1;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.85rem;
-  outline: none;
-}
-
-.add-option-row input:focus {
-  border-color: var(--highlight);
-  box-shadow: 0 0 0 3px rgba(138, 115, 73, 0.1);
-}
-
 .add-option-row .btn-small {
   background: var(--accent);
   color: #fff;
   border: none;
-  min-width: 40px;
+  width: 100%;
+  justify-content: center;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.82rem;
 }
 
 .add-option-row .btn-small:hover { background: var(--accent-hover); }
+
+.catalog-add-modal {
+  max-width: 460px;
+}
+
+.catalog-add-input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.catalog-add-input:focus {
+  border-color: var(--highlight);
+  box-shadow: 0 0 0 3px rgba(138, 115, 73, 0.1);
+}
 
 /* ── Product editor ── */
 .admin-product {
