@@ -320,10 +320,13 @@ async function checkSupabase() {
   }
 }
 
+if (!process.env.VERCEL) {
 app.listen(PORT, () => {
   console.log(`Server: http://localhost:${PORT}`);
   console.log(`Admin:  http://localhost:${PORT}/admin`);
   checkSupabase();
 });
+}
 
-module.exports = { makeVariantId };
+module.exports = app;
+module.exports.makeVariantId = makeVariantId;

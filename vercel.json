@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "buildCommand": "",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/server" },
+    { "source": "/admin/catalog", "destination": "/api/server" },
+    { "source": "/admin", "destination": "/api/server" },
+    { "source": "/images/(.*)", "destination": "/api/server" }
+  ]
+}
