@@ -24,6 +24,14 @@ const SIZE_CHECK_SVG = `<svg class="size-check" width="18" height="18" viewBox="
 
 const $ = (sel) => document.querySelector(sel);
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function phoneDigitsOnly(value) {
   return value.replace(/\D/g, '');
 }
@@ -199,15 +207,103 @@ function filteredProducts() {
   });
 }
 
+function closeFilterDropdowns() {
+  document.querySelectorAll('.filter-dropdown.is-open').forEach((wrap) => {
+    wrap.classList.remove('is-open');
+    const btn = wrap.querySelector('.filter-dropdown-btn');
+    const menu = wrap.querySelector('.filter-dropdown-menu');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (menu) menu.hidden = true;
+  });
+}
+
+function buildFilterDropdown(id, placeholder, currentValue, options) {
+  const label = currentValue || placeholder;
+  const items = [{ value: '', label: placeholder }, ...options.map((o) => ({ value: o, label: o }))];
+  const menuItems = items.map((item) => `
+    <button
+      type="button"
+      class="filter-dropdown-item${currentValue === item.value ? ' is-selected' : ''}"
+      data-value="${escapeHtml(item.value)}"
+      role="option"
+      aria-selected="${currentValue === item.value}"
+    >
+      <span>${escapeHtml(item.label)}</span>
+      <svg class="filter-dropdown-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="M20 6L9 17l-5-5"/>
+      </svg>
+    </button>
+  `).join('');
+
+  return `
+    <div class="filter-dropdown" data-filter-id="${id}">
+      <button type="button" class="filter-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span class="filter-dropdown-label">${escapeHtml(label)}</span>
+        <svg class="filter-dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      <div class="filter-dropdown-menu" role="listbox" hidden>
+        ${menuItems}
+      </div>
+    </div>
+  `;
+}
+
+function bindFilterDropdownEvents() {
+  const filters = $('#filters');
+  if (filters._dropdownBound) return;
+  filters._dropdownBound = true;
+
+  filters.addEventListener('click', (e) => {
+    if (e.target.closest('.filter-dropdown-menu')) {
+      e.stopPropagation();
+    }
+
+    const btn = e.target.closest('.filter-dropdown-btn');
+    if (btn) {
+      e.stopPropagation();
+      const wrap = btn.closest('.filter-dropdown');
+      const menu = wrap.querySelector('.filter-dropdown-menu');
+      const isOpen = wrap.classList.contains('is-open');
+      closeFilterDropdowns();
+      if (!isOpen) {
+        wrap.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+        menu.hidden = false;
+      }
+      return;
+    }
+
+    const item = e.target.closest('.filter-dropdown-item');
+    if (!item) return;
+
+    const wrap = item.closest('.filter-dropdown');
+    const filterId = wrap.dataset.filterId;
+    const value = item.dataset.value;
+    const placeholder = filterId === 'filterBrand' ? 'Barcha brendlar' : 'Barcha kategoriyalar';
+
+    if (filterId === 'filterBrand') filterBrand = value;
+    else filterCategory = value;
+
+    wrap.querySelector('.filter-dropdown-label').textContent = value || placeholder;
+    wrap.querySelectorAll('.filter-dropdown-item').forEach((el) => {
+      const selected = el.dataset.value === value;
+      el.classList.toggle('is-selected', selected);
+      el.setAttribute('aria-selected', selected);
+    });
+
+    closeFilterDropdowns();
+    renderProducts();
+  });
+
+  document.addEventListener('click', closeFilterDropdowns);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeFilterDropdowns();
+  });
+}
+
 function renderFilters() {
-  const brandOpts = CATALOG.brands.map((b) => `
-    <option value="${b}" ${filterBrand === b ? 'selected' : ''}>${b}</option>
-  `).join('');
-
-  const catOpts = CATALOG.categories.map((c) => `
-    <option value="${c}" ${filterCategory === c ? 'selected' : ''}>${c}</option>
-  `).join('');
-
   $('#filters').innerHTML = `
     <div class="search-box">
       <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -217,14 +313,8 @@ function renderFilters() {
       <input type="search" id="searchInput" class="search-input" placeholder="Mahsulotlarni qidirish..." value="${filterSearch}">
     </div>
     <div class="toolbar-filters">
-      <select id="filterBrand" class="filter-select">
-        <option value="">Barcha brendlar</option>
-        ${brandOpts}
-      </select>
-      <select id="filterCategory" class="filter-select">
-        <option value="">Barcha kategoriyalar</option>
-        ${catOpts}
-      </select>
+      ${buildFilterDropdown('filterBrand', 'Barcha brendlar', filterBrand, CATALOG.brands)}
+      ${buildFilterDropdown('filterCategory', 'Barcha kategoriyalar', filterCategory, CATALOG.categories)}
     </div>
   `;
 
@@ -233,15 +323,7 @@ function renderFilters() {
     renderProducts();
   });
 
-  $('#filterBrand').addEventListener('change', (e) => {
-    filterBrand = e.target.value;
-    renderProducts();
-  });
-
-  $('#filterCategory').addEventListener('change', (e) => {
-    filterCategory = e.target.value;
-    renderProducts();
-  });
+  bindFilterDropdownEvents();
 }
 
 function formatPrice(n) {
