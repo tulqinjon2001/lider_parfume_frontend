@@ -70,24 +70,40 @@ function makeVariantId(productId, scent, size) {
   return `${productId}-${slugify(scent)}-${slugify(size)}`;
 }
 
-const adminTokens = new Map();
 const TOKEN_TTL = 24 * 60 * 60 * 1000;
 
+function getTokenSecret() {
+  return process.env.ADMIN_PASSWORD || process.env.ADMIN_TOKEN_SECRET || '';
+}
+
 function createToken() {
-  const token = crypto.randomBytes(32).toString('hex');
-  adminTokens.set(token, Date.now() + TOKEN_TTL);
-  return token;
+  const secret = getTokenSecret();
+  if (!secret) throw new Error('Admin parol sozlanmagan');
+
+  const payload = Buffer.from(JSON.stringify({ exp: Date.now() + TOKEN_TTL })).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
 }
 
 function verifyToken(token) {
   if (!token) return false;
-  const expires = adminTokens.get(token);
-  if (!expires) return false;
-  if (Date.now() > expires) {
-    adminTokens.delete(token);
+
+  const secret = getTokenSecret();
+  if (!secret) return false;
+
+  const [payload, sig] = token.split('.');
+  if (!payload || !sig) return false;
+
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  if (sig.length !== expected.length) return false;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return typeof data.exp === 'number' && Date.now() < data.exp;
+  } catch {
     return false;
   }
-  return true;
 }
 
 function authMiddleware(req, res, next) {

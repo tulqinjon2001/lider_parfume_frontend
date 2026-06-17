@@ -4,8 +4,7 @@
   "outputDirectory": "public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/server" },
-    { "source": "/admin/catalog", "destination": "/api/server" },
-    { "source": "/admin", "destination": "/api/server" },
-    { "source": "/images/(.*)", "destination": "/api/server" }
+    { "source": "/admin/catalog", "destination": "/admin-catalog.html" },
+    { "source": "/admin", "destination": "/admin.html" }
   ]
 }

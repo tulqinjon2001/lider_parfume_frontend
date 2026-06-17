@@ -877,7 +877,15 @@ document.addEventListener('click', (e) => {
 (async () => {
   if (await checkAuth()) {
     showAdmin();
-    await loadProducts();
+    $('#productsOverview').innerHTML = '<p class="products-loading">Yuklanmoqda...</p>';
+    try {
+      await loadProducts();
+    } catch (err) {
+      showToast(err.message || 'Yuklanmadi');
+      token = null;
+      localStorage.removeItem(TOKEN_KEY);
+      showLogin();
+    }
   } else {
     showLogin();
   }
