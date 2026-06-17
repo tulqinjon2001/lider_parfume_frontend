@@ -207,6 +207,8 @@ function showLogin() {
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#loginError').textContent = '';
+  const btn = e.target.querySelector('button[type="submit"]');
+  setButtonLoading(btn, true, 'Kirish...');
 
   try {
     const { token: t } = await api('/api/admin/login', {
@@ -217,9 +219,12 @@ $('#loginForm').addEventListener('submit', async (e) => {
     token = t;
     localStorage.setItem(TOKEN_KEY, token);
     showApp();
+    $('#catalogContent').innerHTML = sectionLoaderHtml('Brend va kategoriyalar yuklanmoqda...');
     await loadData();
   } catch (err) {
     $('#loginError').textContent = err.message;
+  } finally {
+    setButtonLoading(btn, false);
   }
 });
 
@@ -289,10 +294,21 @@ $('#addModal').addEventListener('click', (e) => {
 });
 
 (async () => {
+  showBootLoader();
   if (await checkAuth()) {
+    hideBootLoader();
     showApp();
-    await loadData();
+    $('#catalogContent').innerHTML = sectionLoaderHtml('Brend va kategoriyalar yuklanmoqda...');
+    try {
+      await loadData();
+    } catch (err) {
+      showToast(err.message || 'Yuklanmadi');
+      token = null;
+      localStorage.removeItem(TOKEN_KEY);
+      showLogin();
+    }
   } else {
+    hideBootLoader();
     showLogin();
   }
 })();

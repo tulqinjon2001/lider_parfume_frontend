@@ -702,7 +702,7 @@ function detectLocation() {
     return;
   }
 
-  status.textContent = 'Lokatsiya aniqlanmoqda...';
+  setLocationLoading(true);
   btn.disabled = true;
 
   navigator.geolocation.getCurrentPosition(
@@ -877,8 +877,7 @@ $('#orderForm').addEventListener('submit', async (e) => {
   const phone = `+${phoneDigits}`;
 
   const btn = e.target.querySelector('.order-btn');
-  btn.disabled = true;
-  btn.textContent = 'Yuborilmoqda...';
+  setButtonLoading(btn, true, 'Yuborilmoqda...');
 
   try {
     const res = await fetch('/api/order', {
@@ -915,11 +914,12 @@ $('#orderForm').addEventListener('submit', async (e) => {
     showToast('Serverga ulanib bo\'lmadi');
   }
 
-  btn.disabled = false;
-  btn.textContent = 'Zakaz berish';
+  setButtonLoading(btn, false);
 });
 
 async function init() {
+  $('#filters').innerHTML = sectionLoaderHtml('Filtrlarni yuklash...', true);
+  $('#products').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
   try {
     const [productsRes, catalogRes] = await Promise.all([
       fetch('/api/products'),
@@ -932,7 +932,9 @@ async function init() {
     renderProducts();
     renderCart();
   } catch {
-    $('#products').innerHTML = '<div class="cart-empty">Yuklanmadi</div>';
+    const errHtml = '<div class="cart-empty">Yuklanmadi</div>';
+    $('#products').innerHTML = errHtml;
+    $('#filters').innerHTML = errHtml;
   }
 }
 

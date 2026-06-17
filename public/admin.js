@@ -4,6 +4,9 @@ const PLACEHOLDER = 'images/placeholder.svg';
 let products = [];
 let catalog = { brands: [], categories: [] };
 let editingIndex = null;
+let filterSearch = '';
+let filterBrand = '';
+let filterCategory = '';
 let token = localStorage.getItem(TOKEN_KEY);
 let autoSaveTimer = null;
 let saveInFlight = false;
@@ -278,24 +281,117 @@ function normalizeEditingIndex() {
   }
 }
 
-function renderOverview() {
-  const el = $('#productsOverview');
-  normalizeEditingIndex();
+function getFilterBrands() {
+  const fromProducts = products.map((p) => p.brand).filter(Boolean);
+  return [...new Set([...catalog.brands, ...fromProducts])].sort((a, b) => a.localeCompare(b, 'uz'));
+}
 
-  if (!products.length) {
-    el.innerHTML = `
-      <div class="page-head">
-        <h1 class="page-title">Mahsulotlar</h1>
-        <p class="page-desc">Hali mahsulot yo'q</p>
+function getFilterCategories() {
+  const fromProducts = products.map((p) => p.category).filter(Boolean);
+  return [...new Set([...catalog.categories, ...fromProducts])].sort((a, b) => a.localeCompare(b, 'uz'));
+}
+
+function filteredProductEntries() {
+  const q = filterSearch.trim().toLowerCase();
+  return products
+    .map((p, pi) => ({ p, pi }))
+    .filter(({ p, pi }) => {
+      if (pi === editingIndex) return true;
+      if (filterBrand && p.brand !== filterBrand) return false;
+      if (filterCategory && p.category !== filterCategory) return false;
+      if (q) {
+        const haystack = [p.name, p.brand, p.category].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+}
+
+function closeAdminFilterDropdowns() {
+  document.querySelectorAll('#adminFilters .filter-dropdown.is-open').forEach((wrap) => {
+    wrap.classList.remove('is-open');
+    const btn = wrap.querySelector('.filter-dropdown-btn');
+    const menu = wrap.querySelector('.filter-dropdown-menu');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (menu) menu.hidden = true;
+  });
+}
+
+function buildAdminFilterDropdown(id, placeholder, currentValue, options) {
+  const label = currentValue || placeholder;
+  const items = [{ value: '', label: placeholder }, ...options.map((o) => ({ value: o, label: o }))];
+  const menuItems = items.map((item) => `
+    <button
+      type="button"
+      class="filter-dropdown-item${currentValue === item.value ? ' is-selected' : ''}"
+      data-value="${esc(item.value)}"
+      role="option"
+      aria-selected="${currentValue === item.value}"
+    >
+      <span>${esc(item.label)}</span>
+      <svg class="filter-dropdown-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+        <path d="M20 6L9 17l-5-5"/>
+      </svg>
+    </button>
+  `).join('');
+
+  return `
+    <div class="filter-dropdown" data-filter-id="${id}">
+      <button type="button" class="filter-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span class="filter-dropdown-label">${esc(label)}</span>
+        <svg class="filter-dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      <div class="filter-dropdown-menu" role="listbox" hidden>
+        ${menuItems}
       </div>
-      <div class="products-empty">
-        <p>Mahsulot yo'q</p>
-        <span class="products-empty-hint">Yuqoridagi <strong>+ Mahsulot</strong> tugmasini bosing</span>
+    </div>
+  `;
+}
+
+function renderAdminFilters() {
+  const el = $('#adminFilters');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div class="search-box">
+      <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="16.5" y1="16.5" x2="21" y2="21"/>
+      </svg>
+      <input type="search" id="adminSearchInput" class="search-input" placeholder="Mahsulotlarni qidirish..." value="${esc(filterSearch)}">
+    </div>
+    ${buildAdminFilterDropdown('adminFilterBrand', 'Barcha brendlar', filterBrand, getFilterBrands())}
+    ${buildAdminFilterDropdown('adminFilterCategory', 'Barcha kategoriyalar', filterCategory, getFilterCategories())}
+  `;
+}
+
+function updateAdminProductCount() {
+  const el = $('#adminProductCount');
+  if (!el) return;
+  const shown = filteredProductEntries().length;
+  el.textContent = shown === products.length
+    ? `${products.length} ta mahsulot`
+    : `${shown} / ${products.length} ta mahsulot`;
+}
+
+function renderAdminTable() {
+  const wrap = $('#adminTableWrap');
+  if (!wrap) return;
+
+  const entries = filteredProductEntries();
+
+  if (!entries.length) {
+    wrap.innerHTML = `
+      <div class="products-empty products-empty--filter">
+        <p>Natija topilmadi</p>
+        <span class="products-empty-hint">Qidiruv yoki filtrlarni o'zgartirib ko'ring</span>
       </div>`;
     return;
   }
 
-  const rows = products.flatMap((p, pi) => {
+  const rows = entries.flatMap(({ p, pi }) => {
     const main = productTableRow(p, pi);
     if (editingIndex !== pi) return [main];
     return [main, `
@@ -308,11 +404,7 @@ function renderOverview() {
       </tr>`];
   });
 
-  el.innerHTML = `
-    <div class="page-head">
-      <h1 class="page-title">Mahsulotlar</h1>
-      <p class="page-desc">${products.length} ta mahsulot</p>
-    </div>
+  wrap.innerHTML = `
     <div class="products-table-wrap">
       <table class="products-table">
         <thead>
@@ -330,6 +422,104 @@ function renderOverview() {
         </tbody>
       </table>
     </div>`;
+}
+
+function bindAdminFilterEvents() {
+  const filters = $('#adminFilters');
+  if (!filters || filters._dropdownBound) return;
+  filters._dropdownBound = true;
+
+  filters.addEventListener('input', (e) => {
+    if (e.target.id !== 'adminSearchInput') return;
+    filterSearch = e.target.value;
+    updateAdminProductCount();
+    renderAdminTable();
+  });
+
+  filters.addEventListener('click', (e) => {
+    if (e.target.closest('.filter-dropdown-menu')) {
+      e.stopPropagation();
+    }
+
+    const btn = e.target.closest('.filter-dropdown-btn');
+    if (btn) {
+      e.stopPropagation();
+      const wrap = btn.closest('.filter-dropdown');
+      const menu = wrap.querySelector('.filter-dropdown-menu');
+      const isOpen = wrap.classList.contains('is-open');
+      closeAdminFilterDropdowns();
+      if (!isOpen) {
+        wrap.classList.add('is-open');
+        btn.setAttribute('aria-expanded', 'true');
+        menu.hidden = false;
+      }
+      return;
+    }
+
+    const item = e.target.closest('.filter-dropdown-item');
+    if (!item) return;
+
+    const wrap = item.closest('.filter-dropdown');
+    const filterId = wrap.dataset.filterId;
+    const value = item.dataset.value;
+    const placeholder = filterId === 'adminFilterBrand' ? 'Barcha brendlar' : 'Barcha kategoriyalar';
+
+    if (filterId === 'adminFilterBrand') filterBrand = value;
+    else filterCategory = value;
+
+    wrap.querySelector('.filter-dropdown-label').textContent = value || placeholder;
+    wrap.querySelectorAll('.filter-dropdown-item').forEach((el) => {
+      const selected = el.dataset.value === value;
+      el.classList.toggle('is-selected', selected);
+      el.setAttribute('aria-selected', selected);
+    });
+
+    closeAdminFilterDropdowns();
+    updateAdminProductCount();
+    renderAdminTable();
+  });
+
+  document.addEventListener('click', closeAdminFilterDropdowns);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAdminFilterDropdowns();
+  });
+}
+
+function renderOverview() {
+  const el = $('#productsOverview');
+  normalizeEditingIndex();
+
+  if (!products.length) {
+    el.innerHTML = `
+      <div class="page-head">
+        <h1 class="page-title">Mahsulotlar</h1>
+        <p class="page-desc">Hali mahsulot yo'q</p>
+      </div>
+      <div class="products-empty">
+        <p>Mahsulot yo'q</p>
+        <span class="products-empty-hint">Yuqoridagi <strong>+ Mahsulot</strong> tugmasini bosing</span>
+      </div>`;
+    return;
+  }
+
+  if (!el.querySelector('#adminFilters')) {
+    el.innerHTML = `
+      <div class="page-head">
+        <div class="page-head-top">
+          <div class="page-head-text">
+            <h1 class="page-title">Mahsulotlar</h1>
+            <p class="page-desc" id="adminProductCount"></p>
+          </div>
+          <div class="admin-toolbar" id="adminFilters"></div>
+        </div>
+      </div>
+      <div id="adminTableWrap"></div>`;
+    bindAdminFilterEvents();
+    renderAdminFilters();
+  }
+
+  updateAdminProductCount();
+  renderAdminTable();
 }
 
 function productTableRow(p, pi) {
@@ -561,6 +751,8 @@ function showLogin() {
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#loginError').textContent = '';
+  const btn = e.target.querySelector('button[type="submit"]');
+  setButtonLoading(btn, true, 'Kirish...');
 
   try {
     const { token: t } = await api('/api/admin/login', {
@@ -571,9 +763,12 @@ $('#loginForm').addEventListener('submit', async (e) => {
     token = t;
     localStorage.setItem(TOKEN_KEY, token);
     showAdmin();
+    $('#productsOverview').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
     await loadProducts();
   } catch (err) {
     $('#loginError').textContent = err.message;
+  } finally {
+    setButtonLoading(btn, false);
   }
 });
 
@@ -875,9 +1070,11 @@ document.addEventListener('click', (e) => {
 });
 
 (async () => {
+  showBootLoader();
   if (await checkAuth()) {
+    hideBootLoader();
     showAdmin();
-    $('#productsOverview').innerHTML = '<p class="products-loading">Yuklanmoqda...</p>';
+    $('#productsOverview').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
     try {
       await loadProducts();
     } catch (err) {
@@ -887,6 +1084,7 @@ document.addEventListener('click', (e) => {
       showLogin();
     }
   } else {
+    hideBootLoader();
     showLogin();
   }
 })();
