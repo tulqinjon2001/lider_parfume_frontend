@@ -1,9 +1,11 @@
 const PLACEHOLDER = 'images/placeholder.svg';
+const CART_STORAGE_KEY = 'lider_parfum_cart';
 
 let PRODUCTS = [];
 let CATALOG = { brands: [], categories: [] };
 let filterBrand = '';
 let filterCategory = '';
+let filterSearch = '';
 const cart = {};
 const qtyState = {};
 const selectedVariant = {};
@@ -13,9 +15,72 @@ const pickerState = {
   scent: null,
   size: null,
   qty: 1,
+  scentExpanded: false,
 };
 
+const SCENT_THUMB_LIMIT = 3;
+
+const SIZE_CHECK_SVG = `<svg class="size-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>`;
+
 const $ = (sel) => document.querySelector(sel);
+
+function phoneDigitsOnly(value) {
+  return value.replace(/\D/g, '');
+}
+
+function normalizeUzPhoneDigits(input) {
+  let d = phoneDigitsOnly(input);
+  if (d.startsWith('998')) {
+    // ok
+  } else if (d.startsWith('8') && d.length <= 10) {
+    d = `998${d.slice(1)}`;
+  } else if (d.length <= 9) {
+    d = `998${d}`;
+  }
+  return d.slice(0, 12);
+}
+
+function formatUzPhone(digits) {
+  const d = digits.slice(0, 12);
+  if (!d) return '';
+  if (d.length <= 3) return `+${d}`;
+  let out = `+${d.slice(0, 3)} ${d.slice(3, 5)}`;
+  if (d.length <= 5) return out;
+  out += ` ${d.slice(5, 8)}`;
+  if (d.length <= 8) return out;
+  out += ` ${d.slice(8, 10)}`;
+  if (d.length <= 10) return out;
+  return `${out} ${d.slice(10, 12)}`;
+}
+
+function isValidUzPhone(digits) {
+  return digits.length === 12 && digits.startsWith('998');
+}
+
+function getUzPhoneDigits() {
+  return normalizeUzPhoneDigits($('#customerPhone').value);
+}
+
+function setPhoneValidity() {
+  const input = $('#customerPhone');
+  const digits = getUzPhoneDigits();
+  if (!digits.length) {
+    input.setCustomValidity('');
+    return;
+  }
+  if (digits.length < 12) {
+    input.setCustomValidity('To\'liq raqam kiriting: +998 XX XXX XX XX');
+    return;
+  }
+  input.setCustomValidity('');
+}
+
+function handlePhoneInput(e) {
+  const input = e.target;
+  const digits = normalizeUzPhoneDigits(input.value);
+  input.value = formatUzPhone(digits);
+  setPhoneValidity();
+}
 
 function getVariant(productId, variantId) {
   const product = PRODUCTS.find((p) => p.id === productId);
@@ -69,12 +134,34 @@ function getImageForScent(product, scent, size) {
 
 function renderScentGrid(product, size, selectedScent) {
   const variants = getVariantsForSize(product, size);
-  $('#scentGrid').innerHTML = variants.map((v) => `
+  const extra = pickerState.scentExpanded ? 0 : Math.max(0, variants.length - SCENT_THUMB_LIMIT);
+  const shown = extra > 0 ? variants.slice(0, SCENT_THUMB_LIMIT) : variants;
+
+  let html = shown.map((v) => `
     <button type="button" class="scent-option ${v.scent === selectedScent ? 'selected' : ''}" data-scent="${v.scent}">
       <img src="${v.image}" alt="${v.scent}" onerror="imgFallback(event)">
-      <span>${v.scent}</span>
     </button>
   `).join('');
+
+  if (extra > 0) {
+    html += `<button type="button" class="scent-more" data-action="expand-scents">+${extra}</button>`;
+  }
+
+  $('#scentGrid').innerHTML = html;
+}
+
+function renderSizeOptions(product, selectedSize) {
+  const sizes = getUniqueSizes(product);
+  $('#sizeOptions').innerHTML = sizes.map((s) => {
+    const selected = s === selectedSize;
+    const price = formatPrice(getPriceForSize(product, s));
+    return `
+      <button type="button" class="size-option ${selected ? 'selected' : ''}" data-size="${s}">
+        <span class="size-option-label">${s} — ${price}</span>
+        ${selected ? SIZE_CHECK_SVG : ''}
+      </button>
+    `;
+  }).join('');
 }
 
 function resolveVariant(product, scent, size) {
@@ -100,9 +187,14 @@ function productMeta(p) {
 }
 
 function filteredProducts() {
+  const q = filterSearch.trim().toLowerCase();
   return PRODUCTS.filter((p) => {
     if (filterBrand && p.brand !== filterBrand) return false;
     if (filterCategory && p.category !== filterCategory) return false;
+    if (q) {
+      const haystack = [p.name, p.brand, p.category].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 }
@@ -117,15 +209,29 @@ function renderFilters() {
   `).join('');
 
   $('#filters').innerHTML = `
-    <select id="filterBrand" class="filter-select">
-      <option value="">Barcha brendlar</option>
-      ${brandOpts}
-    </select>
-    <select id="filterCategory" class="filter-select">
-      <option value="">Barcha kategoriyalar</option>
-      ${catOpts}
-    </select>
+    <div class="search-box">
+      <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/>
+        <line x1="16.5" y1="16.5" x2="21" y2="21"/>
+      </svg>
+      <input type="search" id="searchInput" class="search-input" placeholder="Mahsulotlarni qidirish..." value="${filterSearch}">
+    </div>
+    <div class="toolbar-filters">
+      <select id="filterBrand" class="filter-select">
+        <option value="">Barcha brendlar</option>
+        ${brandOpts}
+      </select>
+      <select id="filterCategory" class="filter-select">
+        <option value="">Barcha kategoriyalar</option>
+        ${catOpts}
+      </select>
+    </div>
   `;
+
+  $('#searchInput').addEventListener('input', (e) => {
+    filterSearch = e.target.value;
+    renderProducts();
+  });
 
   $('#filterBrand').addEventListener('change', (e) => {
     filterBrand = e.target.value;
@@ -159,66 +265,23 @@ function renderProducts() {
   container.innerHTML = list.map((p) => {
     if (!p.variants?.length) return '';
 
-    if (needsPicker(p)) {
-      const minPrice = getMinPrice(p);
-      const preview = p.variants[0];
-
-      return `
-        <div class="product-card pickable" data-product-id="${p.id}" data-action="open-picker">
-          ${productMeta(p)}
-          <div class="product-name">${p.name}</div>
-          <div class="product-preview">
-            <img
-              src="${preview.image}"
-              alt="${p.name}"
-              loading="lazy"
-              onerror="imgFallback(event)"
-            >
-          </div>
-          <div class="product-price-range">dan <span>${formatPrice(minPrice)}</span></div>
-          <button type="button" class="pick-btn" data-product-id="${p.id}" data-action="open-picker">Tanlash</button>
-        </div>
-      `;
-    }
-
-    qtyState[p.id] = qtyState[p.id] ?? 1;
-    if (!selectedVariant[p.id]) selectedVariant[p.id] = p.variants[0].id;
-    const current = getSelectedVariant(p);
-
-    const thumbs = p.variants.map((v) => `
-      <button
-        type="button"
-        class="variant-thumb ${v.id === current.id ? 'selected' : ''}"
-        data-product-id="${p.id}"
-        data-variant-id="${v.id}"
-        title="${v.scent} · ${v.size}"
-      >
-        <img src="${v.image}" alt="${v.scent} ${v.size}" loading="lazy" onerror="imgFallback(event)">
-        <span class="variant-label">${v.scent}<br>${v.size}</span>
-      </button>
-    `).join('');
+    const minPrice = getMinPrice(p);
+    const preview = p.variants[0];
 
     return `
-      <div class="product-card" data-product-id="${p.id}">
+      <div class="product-card pickable" data-product-id="${p.id}" data-action="open-picker">
         ${productMeta(p)}
         <div class="product-name">${p.name}</div>
         <div class="product-preview">
           <img
-            id="preview-${p.id}"
-            src="${current.image}"
+            src="${preview.image}"
             alt="${p.name}"
             loading="lazy"
             onerror="imgFallback(event)"
           >
         </div>
-        <div class="variant-grid">${thumbs}</div>
-        <div class="product-price" id="price-${p.id}">${formatPrice(current.price)}</div>
-        <div class="qty-control">
-          <button class="qty-btn minus" data-product-id="${p.id}">−</button>
-          <span class="qty-value" id="qty-${p.id}">${qtyState[p.id]}</span>
-          <button class="qty-btn plus" data-product-id="${p.id}">+</button>
-        </div>
-        <button class="add-btn" data-product-id="${p.id}">Savatga (${qtyState[p.id]})</button>
+        <div class="product-price-range">dan <span>${formatPrice(minPrice)}</span></div>
+        <button type="button" class="pick-btn" data-product-id="${p.id}" data-action="open-picker">Tanlash</button>
       </div>
     `;
   }).join('');
@@ -242,6 +305,36 @@ function selectVariant(productId, variantId) {
   });
 }
 
+function formatPickerLabel(scent, size) {
+  return [scent, size].filter(Boolean).join(' · ');
+}
+
+function formatModalTitle(product, scent) {
+  return scent ? `${product.name} — ${scent}` : product.name;
+}
+
+function syncModalQtyInput() {
+  $('#modalQty').value = pickerState.qty;
+}
+
+function commitModalQty() {
+  const input = $('#modalQty');
+  const raw = input.value.trim();
+  if (!raw) {
+    pickerState.qty = 1;
+    input.value = '1';
+    return;
+  }
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    pickerState.qty = 1;
+    input.value = '1';
+    return;
+  }
+  pickerState.qty = n;
+  input.value = String(n);
+}
+
 function updatePickerUI() {
   const product = PRODUCTS.find((p) => p.id === pickerState.productId);
   if (!product) return;
@@ -254,34 +347,40 @@ function updatePickerUI() {
   $('#modalPreview').onerror = imgFallback;
   const meta = [product.brand, product.category].filter(Boolean).join(' · ');
   $('#modalBrand').textContent = meta || '';
-  $('#modalTitle').textContent = `${product.name} — ${scent}`;
+  $('#modalTitle').textContent = formatModalTitle(product, scent);
   $('#modalPrice').textContent = formatPrice(price);
-  $('#modalQty').textContent = pickerState.qty;
-  $('#pickerSummary').innerHTML = `Tanlangan: <strong>${scent} · ${size}</strong>`;
+  syncModalQtyInput();
+  const summary = formatPickerLabel(scent, size);
+  $('#pickerSummary').innerHTML = summary
+    ? `Tanlangan: <strong>${summary}</strong>`
+    : '';
+  $('#modalDescription').textContent = product.description || '';
+  $('#modalDescription').hidden = true;
+  $('#modalDescToggle').setAttribute('aria-expanded', 'false');
+  $('#modalDescToggle').classList.remove('open');
 
   renderScentGrid(product, size, scent);
-
-  document.querySelectorAll('.size-option').forEach((el) => {
-    el.classList.toggle('selected', el.dataset.size === size);
-    el.textContent = `${el.dataset.size} — ${formatPrice(getPriceForSize(product, el.dataset.size))}`;
-  });
+  renderSizeOptions(product, size);
 }
 
 function openProductPicker(productId) {
   const product = PRODUCTS.find((p) => p.id === productId);
-  if (!product || !needsPicker(product)) return;
+  if (!product?.variants?.length) return;
+
+  if (product.variants.length === 1) {
+    addToCartFromVariant(product, product.variants[0], 1);
+    renderCart();
+    showToast('Savatga qo\'shildi');
+    return;
+  }
 
   const firstVariant = product.variants[0];
-  const sizes = getUniqueSizes(product);
 
   pickerState.productId = productId;
   pickerState.size = firstVariant.size;
-  pickerState.scent = getScentsForSize(product, firstVariant.size)[0];
+  pickerState.scent = getScentsForSize(product, firstVariant.size).find(Boolean) ?? firstVariant.scent ?? '';
   pickerState.qty = 1;
-
-  $('#sizeOptions').innerHTML = sizes.map((s) => `
-    <button type="button" class="size-option" data-size="${s}">${s}</button>
-  `).join('');
+  pickerState.scentExpanded = false;
 
   updatePickerUI();
 
@@ -315,6 +414,36 @@ function cartTotal() {
   return Object.values(cart).reduce((s, i) => s + i.qty * i.price, 0);
 }
 
+function loadCart() {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    if (!raw) return;
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) return;
+    items.forEach((item) => {
+      if (item?.variantId && item.qty > 0) {
+        cart[item.variantId] = item;
+      }
+    });
+  } catch {
+    localStorage.removeItem(CART_STORAGE_KEY);
+  }
+}
+
+function saveCart() {
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(Object.values(cart)));
+  } catch {
+    // localStorage band yoki o'chirilgan
+  }
+}
+
+function clearCart() {
+  Object.keys(cart).forEach((k) => delete cart[k]);
+  saveCart();
+  renderCart();
+}
+
 function renderCart() {
   $('#cartCount').textContent = cartCount();
   $('#cartTotal').textContent = formatPrice(cartTotal());
@@ -324,6 +453,7 @@ function renderCart() {
 
   if (!items.length) {
     container.innerHTML = '<div class="cart-empty">Savat bo\'sh</div>';
+    saveCart();
     return;
   }
 
@@ -342,6 +472,8 @@ function renderCart() {
       </div>
     </div>
   `).join('');
+
+  saveCart();
 }
 
 function addToCartFromVariant(product, variant, qty) {
@@ -382,6 +514,8 @@ function addFromPicker() {
   const product = PRODUCTS.find((p) => p.id === pickerState.productId);
   if (!product) return;
 
+  commitModalQty();
+
   const variant = resolveVariant(product, pickerState.scent, pickerState.size);
   const price = getPriceForSize(product, pickerState.size);
 
@@ -395,8 +529,7 @@ function addFromPicker() {
 
   addToCartFromVariant(product, cartVariant, pickerState.qty);
   renderCart();
-  closeProductPicker();
-  showToast('Savatga qo\'shildi');
+  animateFlyToCart(cartVariant.image, $('#modalPreview'));
 }
 
 function showToast(msg) {
@@ -406,10 +539,111 @@ function showToast(msg) {
   setTimeout(() => toast.classList.remove('show'), 2000);
 }
 
+function animateFlyToCart(imageSrc, sourceEl) {
+  if (!sourceEl) return;
+
+  const cartBtn = $('#cartBtn');
+  const sourceRect = sourceEl.getBoundingClientRect();
+  const cartRect = cartBtn.getBoundingClientRect();
+
+  const startX = sourceRect.left + sourceRect.width / 2;
+  const startY = sourceRect.top + sourceRect.height / 2;
+  const endX = cartRect.left + cartRect.width / 2;
+  const endY = cartRect.top + cartRect.height / 2;
+
+  const flyer = document.createElement('img');
+  flyer.className = 'cart-flyer';
+  flyer.src = imageSrc || PLACEHOLDER;
+  flyer.alt = '';
+  flyer.style.setProperty('--fly-dx', `${endX - startX}px`);
+  flyer.style.setProperty('--fly-dy', `${endY - startY}px`);
+  flyer.style.left = `${startX}px`;
+  flyer.style.top = `${startY}px`;
+  document.body.appendChild(flyer);
+
+  let finished = false;
+  const bumpCart = () => {
+    if (finished) return;
+    finished = true;
+    flyer.remove();
+    cartBtn.classList.add('cart-bump');
+    $('#cartCount').classList.add('count-bump');
+    setTimeout(() => {
+      cartBtn.classList.remove('cart-bump');
+      $('#cartCount').classList.remove('count-bump');
+    }, 600);
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => flyer.classList.add('fly'));
+  });
+
+  flyer.addEventListener('transitionend', bumpCart, { once: true });
+  setTimeout(bumpCart, 900);
+}
+
 function openCart() {
   closeProductPicker();
   $('#cartPanel').classList.add('open');
   $('#overlay').classList.add('open');
+  if (!$('#customerLocation').value) detectLocation();
+}
+
+function resetOrderForm() {
+  $('#orderForm').reset();
+  $('#customerLocation').value = '';
+  $('#locationStatus').textContent = 'Savat ochilganda avtomatik aniqlanadi';
+}
+
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=uz,ru,en`,
+      { headers: { Accept: 'application/json', 'User-Agent': 'LiderParfum/1.0' } }
+    );
+    if (!res.ok) throw new Error('reverse failed');
+    const data = await res.json();
+    return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  } catch {
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  }
+}
+
+function detectLocation() {
+  const status = $('#locationStatus');
+  const input = $('#customerLocation');
+  const btn = $('#detectLocationBtn');
+
+  if (!navigator.geolocation) {
+    status.textContent = 'Brauzeringiz lokatsiyani qo\'llab-quvvatlamaydi';
+    input.value = '';
+    return;
+  }
+
+  status.textContent = 'Lokatsiya aniqlanmoqda...';
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      const address = await reverseGeocode(lat, lng);
+      const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+      input.value = `${address} | ${mapsLink}`;
+      status.textContent = address;
+      btn.disabled = false;
+    },
+    (err) => {
+      const messages = {
+        1: 'Lokatsiya ruxsati berilmadi. Brauzer sozlamalaridan ruxsat bering.',
+        2: 'Lokatsiyani aniqlab bo\'lmadi',
+        3: 'So\'rov vaqti tugadi, qayta urinib ko\'ring',
+      };
+      status.textContent = messages[err.code] || 'Lokatsiyani aniqlab bo\'lmadi';
+      input.value = '';
+      btn.disabled = false;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
 }
 
 function closeCart() {
@@ -426,6 +660,13 @@ document.addEventListener('click', (e) => {
     return;
   }
 
+  if (e.target.closest('[data-action="expand-scents"]')) {
+    pickerState.scentExpanded = true;
+    const product = PRODUCTS.find((p) => p.id === pickerState.productId);
+    if (product) renderScentGrid(product, pickerState.size, pickerState.scent);
+    return;
+  }
+
   const scentBtn = e.target.closest('.scent-option');
   if (scentBtn) {
     pickerState.scent = scentBtn.dataset.scent;
@@ -439,7 +680,7 @@ document.addEventListener('click', (e) => {
     pickerState.size = sizeBtn.dataset.size;
     const scents = getScentsForSize(product, pickerState.size);
     if (!scents.includes(pickerState.scent)) {
-      pickerState.scent = scents[0];
+      pickerState.scent = scents.find(Boolean) ?? '';
     }
     updatePickerUI();
     return;
@@ -482,19 +723,44 @@ document.addEventListener('click', (e) => {
 
 $('#closeProductModal').addEventListener('click', closeProductPicker);
 $('#modalAddBtn').addEventListener('click', addFromPicker);
+$('#modalDescToggle').addEventListener('click', () => {
+  const body = $('#modalDescription');
+  const toggle = $('#modalDescToggle');
+  const open = body.hidden;
+  body.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.classList.toggle('open', open);
+});
 $('#modalPlus').addEventListener('click', () => {
   pickerState.qty++;
-  $('#modalQty').textContent = pickerState.qty;
+  syncModalQtyInput();
 });
 $('#modalMinus').addEventListener('click', () => {
   if (pickerState.qty > 1) {
     pickerState.qty--;
-    $('#modalQty').textContent = pickerState.qty;
+    syncModalQtyInput();
+  }
+});
+$('#modalQty').addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/\D/g, '');
+});
+$('#modalQty').addEventListener('blur', commitModalQty);
+$('#modalQty').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    commitModalQty();
+    e.target.blur();
   }
 });
 
 $('#cartBtn').addEventListener('click', openCart);
 $('#closeCart').addEventListener('click', closeCart);
+$('#detectLocationBtn').addEventListener('click', detectLocation);
+$('#customerPhone').addEventListener('input', handlePhoneInput);
+$('#customerPhone').addEventListener('blur', () => {
+  const input = $('#customerPhone');
+  input.value = formatUzPhone(getUzPhoneDigits());
+  setPhoneValidity();
+});
 $('#overlay').addEventListener('click', () => {
   closeProductPicker();
   closeCart();
@@ -506,6 +772,28 @@ $('#orderForm').addEventListener('submit', async (e) => {
   const items = Object.values(cart);
   if (!items.length) return;
 
+  const location = $('#customerLocation').value.trim();
+  if (!location) {
+    showToast('Avval lokatsiyani aniqlang');
+    detectLocation();
+    return;
+  }
+
+  const paymentType = document.querySelector('input[name="paymentType"]:checked')?.value;
+  if (!paymentType) {
+    showToast('To\'lov turini tanlang');
+    return;
+  }
+
+  const phoneDigits = getUzPhoneDigits();
+  if (!isValidUzPhone(phoneDigits)) {
+    setPhoneValidity();
+    showToast('Telefon raqamini to\'g\'ri kiriting (+998 XX XXX XX XX)');
+    $('#customerPhone').reportValidity();
+    return;
+  }
+  const phone = `+${phoneDigits}`;
+
   const btn = e.target.querySelector('.order-btn');
   btn.disabled = true;
   btn.textContent = 'Yuborilmoqda...';
@@ -516,7 +804,10 @@ $('#orderForm').addEventListener('submit', async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: $('#customerName').value.trim(),
-        phone: $('#customerPhone').value.trim(),
+        phone,
+        location,
+        paymentType,
+        note: $('#customerNote').value.trim(),
         items: items.map((i) => ({
           name: i.name,
           scent: i.scent,
@@ -531,9 +822,8 @@ $('#orderForm').addEventListener('submit', async (e) => {
     const data = await res.json();
 
     if (res.ok) {
-      Object.keys(cart).forEach((k) => delete cart[k]);
-      e.target.reset();
-      renderCart();
+      clearCart();
+      resetOrderForm();
       closeCart();
       showToast('Zakaz qabul qilindi!');
     } else {
@@ -555,8 +845,10 @@ async function init() {
     ]);
     PRODUCTS = await productsRes.json();
     CATALOG = await catalogRes.json();
+    loadCart();
     renderFilters();
     renderProducts();
+    renderCart();
   } catch {
     $('#products').innerHTML = '<div class="cart-empty">Yuklanmadi</div>';
   }

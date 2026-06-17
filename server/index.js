@@ -23,6 +23,60 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function formatPriceUz(n) {
+  return Number(n).toLocaleString('uz-UZ');
+}
+
+function formatTelegramOrder({ name, phone, location, paymentLabel, note, items, total }) {
+  const divider = '────────────────────';
+  const [address, mapsLink] = String(location).split(' | ').map((s) => s.trim());
+
+  const itemBlocks = items.map((item, index) => {
+    const detail = [item.scent, item.size].filter(Boolean).join(' · ');
+    const subtotal = item.qty * item.price;
+    const block = [
+      `${index + 1}. ${item.name}`,
+      detail ? `   ${detail}` : null,
+      `   ${item.qty} ta × ${formatPriceUz(item.price)} so'm`,
+      `   Jami: ${formatPriceUz(subtotal)} so'm`,
+    ].filter(Boolean);
+    return block.join('\n');
+  }).join(`\n\n${divider}\n\n`);
+
+  const parts = [
+    '🛍 Yangi zakaz — Lider Parfum',
+    '━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `👤 Ism: ${name}`,
+    `📞 Telefon: ${phone}`,
+    `📍 Manzil: ${address || location}`,
+  ];
+
+  if (mapsLink) {
+    parts.push(`🗺 Xarita: ${mapsLink}`);
+  }
+
+  parts.push(`💳 To'lov: ${paymentLabel}`);
+
+  if (note?.trim()) {
+    parts.push('', '💬 Izoh:', note.trim());
+  }
+
+  parts.push(
+    '',
+    '📦 Mahsulotlar:',
+    divider,
+    '',
+    itemBlocks,
+    '',
+    divider,
+    '',
+    `💰 Jami: ${formatPriceUz(total)} so'm`,
+  );
+
+  return parts.join('\n');
+}
+
 if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
@@ -179,10 +233,20 @@ app.post('/api/admin/upload-url', authMiddleware, asyncHandler(async (req, res) 
 }));
 
 app.post('/api/order', asyncHandler(async (req, res) => {
-  const { name, phone, items, total } = req.body;
+  const { name, phone, location, note, paymentType, items, total } = req.body;
 
-  if (!name || !phone || !items?.length) {
+  const paymentLabels = {
+    naqd: 'Naqd',
+    terminal: 'Terminal',
+    transfer: "Kartaga o'tkazma",
+  };
+
+  if (!name || !phone || !location || !paymentType || !items?.length) {
     return res.status(400).json({ error: 'Ma\'lumotlar to\'liq emas' });
+  }
+
+  if (!paymentLabels[paymentType]) {
+    return res.status(400).json({ error: 'To\'lov turi noto\'g\'ri' });
   }
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -192,23 +256,16 @@ app.post('/api/order', asyncHandler(async (req, res) => {
     return res.status(500).json({ error: 'Telegram sozlanmagan' });
   }
 
-  const lines = items.map((item) => {
-    const detail = [item.scent, item.size].filter(Boolean).join(' · ');
-    const label = detail ? `${item.name} (${detail})` : item.name;
-    return `• ${label} — ${item.qty} ta × ${item.price.toLocaleString()} = ${(item.qty * item.price).toLocaleString()} so'm`;
+  const text = formatTelegramOrder({
+    name,
+    phone,
+    location,
+    paymentType,
+    paymentLabel: paymentLabels[paymentType],
+    note,
+    items,
+    total,
   });
-
-  const text = [
-    '🛍 Yangi zakaz — Lider Parfum',
-    '',
-    `👤 ${name}`,
-    `📞 ${phone}`,
-    '',
-    '📦 Mahsulotlar:',
-    ...lines,
-    '',
-    `💰 Jami: ${total.toLocaleString()} so'm`,
-  ].join('\n');
 
   const response = await fetch(
     `https://api.telegram.org/bot${token}/sendMessage`,
