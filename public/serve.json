@@ -1,7 +1,4 @@
 {
-  "version": 2,
-  "buildCommand": "node scripts/generate-config.js",
-  "outputDirectory": "public",
   "rewrites": [
     { "source": "/admin/product/new", "destination": "/admin-product.html" },
     { "source": "/admin/product", "destination": "/admin-product.html" },

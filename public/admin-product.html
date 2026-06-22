@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
-  <title>Admin — Lider Parfum</title>
+  <title>Mahsulot — Lider Parfum</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin.css">
@@ -21,14 +21,14 @@
     </form>
   </div>
 
-  <div id="catalogApp" class="admin-app hidden">
+  <div id="adminApp" class="admin-app hidden">
     <header class="admin-header">
       <nav class="admin-tabs">
         <a href="/admin" class="admin-tab">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v4H4V6zm0 8h16v4H4v-4z"/></svg>
           <span class="admin-tab-label">Mahsulotlar</span>
         </a>
-        <a href="/admin/catalog" class="admin-tab is-active" aria-current="page">
+        <a href="/admin/catalog" class="admin-tab">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v2H3V5zm4 4h10v2H7V9zm-4 8h18v2H3v-2zm8-4h10v2H11v-2z"/></svg>
           <span class="admin-tab-label">Brand va Kategoriya</span>
         </a>
@@ -38,48 +38,25 @@
         </a>
       </nav>
 
-      <div class="admin-header-search">
-        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>
-        </svg>
-        <input type="search" id="catalogSearch" class="admin-search-input" placeholder="Brend yoki kategoriya qidirish..." autocomplete="off">
-      </div>
+      <div class="admin-header-search admin-header-search-spacer" aria-hidden="true"></div>
 
       <div class="admin-header-actions">
+        <a href="/admin" class="btn-ghost">Mahsulotlar ro'yxati</a>
         <button type="button" id="logoutBtn" class="btn-ghost btn-logout">Chiqish</button>
       </div>
     </header>
 
     <main class="admin-main">
-      <div class="page-head">
-        <h1 class="page-title" id="pageTitle">Brend va Kategoriya</h1>
-        <p class="page-desc" id="pageDesc">Mahsulotlar uchun brend va kategoriya ro'yxatini boshqaring</p>
-      </div>
-      <div class="catalog-page-grid" id="catalogContent"></div>
+      <div id="productEditorRoot" class="product-editor-page"></div>
     </main>
-  </div>
-
-  <div id="addModal" class="modal-overlay hidden">
-    <div class="modal-dialog catalog-add-modal">
-      <div class="modal-header">
-        <h2 id="addModalTitle">Yangi qiymat</h2>
-        <button type="button" class="modal-close" data-action="close-add-modal">&times;</button>
-      </div>
-      <div class="modal-body">
-        <input type="text" id="addModalInput" class="catalog-add-input" placeholder="">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn-ghost" data-action="close-add-modal">Bekor qilish</button>
-        <button type="button" class="btn-primary" id="addModalSaveBtn">Saqlash</button>
-      </div>
-    </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
+  <script>window.__ADMIN_PAGE = 'product';</script>
   <script src="/config.js"></script>
   <script src="/api.js"></script>
   <script src="/admin-nav.js"></script>
-  <script src="/admin-catalog.js"></script>
+  <script src="/admin.js"></script>
 </body>
 </html>

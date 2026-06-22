@@ -4,6 +4,8 @@ let catalog = { brands: [], categories: [] };
 let products = [];
 let token = localStorage.getItem(TOKEN_KEY);
 let addModalType = null;
+let catalogSearch = '';
+let pointerDrag = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -18,15 +20,18 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-async function api(url, options = {}) {
+async function api(path, options = {}) {
+  const url = path.startsWith('http') ? path : apiUrl(path);
   const res = await fetch(url, options);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Xatolik');
   return data;
 }
 
-function esc(str) {
-  return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+function filterItems(items) {
+  const q = catalogSearch.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((name) => name.toLowerCase().includes(q));
 }
 
 async function checkAuth() {
@@ -47,9 +52,24 @@ async function loadData() {
   render();
 }
 
+function esc(str) {
+  return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+function canReorderCatalog() {
+  return !catalogSearch.trim();
+}
+
 function catalogCol(type, items, label) {
-  const rows = items.map((name, i) => `
-    <div class="option-row">
+  const filtered = filterItems(items);
+  const reorderable = canReorderCatalog();
+  const rows = filtered.map((name) => {
+    const i = items.indexOf(name);
+    return `
+    <div class="option-row${reorderable ? '' : ' option-row--static'}" data-index="${i}">
+      <span class="option-drag-handle" title="Tartibni o'zgartirish" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="7" r="1.5"/><circle cx="15" cy="7" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17" r="1.5"/><circle cx="15" cy="17" r="1.5"/></svg>
+      </span>
       <input
         type="text"
         value="${esc(name)}"
@@ -58,13 +78,13 @@ function catalogCol(type, items, label) {
         placeholder="${label} nomi"
       >
       <button type="button" class="btn-danger btn-small" data-action="delete-${type}" data-index="${i}">×</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   return `
     <div class="catalog-col">
       <div class="variants-title">${label}lar</div>
-      <div class="options-list">${rows || `<p class="sizes-empty">${label} yo'q</p>`}</div>
+      <div class="options-list" data-list-type="${type}">${rows || `<p class="sizes-empty">${label} yo'q</p>`}</div>
       <div class="add-option-row">
         <button type="button" class="btn-small btn-add-modal" data-action="open-add-modal" data-type="${type}">
           + Yangi ${label.toLowerCase()}
@@ -79,6 +99,105 @@ function render() {
     ${catalogCol('brand', catalog.brands, 'Brend')}
     ${catalogCol('category', catalog.categories, 'Kategoriya')}
   `;
+  $('#catalogContent').className = 'catalog-page-grid';
+  bindCatalogDrag();
+}
+
+function calcDropIndex(fromIdx, overIdx, insertBefore) {
+  let toIdx = insertBefore ? overIdx : overIdx + 1;
+  if (fromIdx < toIdx) toIdx -= 1;
+  return toIdx;
+}
+
+function clearDragOverMarks() {
+  document.querySelectorAll('.option-row.drag-over-top, .option-row.drag-over-bottom').forEach((el) => {
+    el.classList.remove('drag-over-top', 'drag-over-bottom');
+  });
+}
+
+function markDropTarget(row, clientY) {
+  if (!row) return null;
+  clearDragOverMarks();
+  const rect = row.getBoundingClientRect();
+  const insertBefore = clientY < rect.top + rect.height / 2;
+  row.classList.add(insertBefore ? 'drag-over-top' : 'drag-over-bottom');
+  return { row, insertBefore };
+}
+
+async function reorderCatalogItem(type, fromIdx, toIdx) {
+  if (fromIdx === toIdx) return;
+  const key = type === 'brand' ? 'brands' : 'categories';
+  const prev = [...catalog[key]];
+  const [item] = catalog[key].splice(fromIdx, 1);
+  catalog[key].splice(toIdx, 0, item);
+  render();
+
+  try {
+    await saveCatalog();
+    showToast('Tartib yangilandi');
+  } catch (err) {
+    catalog[key] = prev;
+    render();
+    showToast(err.message);
+  }
+}
+
+function bindCatalogDrag() {
+  if (!canReorderCatalog()) return;
+
+  document.querySelectorAll('.options-list[data-list-type]').forEach((listEl) => {
+    const type = listEl.dataset.listType;
+
+    listEl.querySelectorAll('.option-row:not(.option-row--static) .option-drag-handle').forEach((handle) => {
+      const row = handle.closest('.option-row');
+
+      const startDrag = (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        pointerDrag = {
+          type,
+          fromIdx: Number(row.dataset.index),
+          row,
+          listEl,
+          pointerId: e.pointerId,
+          target: null,
+        };
+        row.classList.add('is-dragging');
+        handle.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      };
+
+      const moveDrag = (e) => {
+        if (!pointerDrag || pointerDrag.pointerId !== e.pointerId) return;
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const overRow = el?.closest('.option-row');
+        if (overRow && overRow.closest('.options-list') === pointerDrag.listEl) {
+          pointerDrag.target = markDropTarget(overRow, e.clientY);
+        } else {
+          clearDragOverMarks();
+          pointerDrag.target = null;
+        }
+      };
+
+      const finishDrag = (e) => {
+        if (!pointerDrag || pointerDrag.pointerId !== e.pointerId) return;
+        const { type: dragType, fromIdx, target } = pointerDrag;
+        pointerDrag.row.classList.remove('is-dragging');
+        clearDragOverMarks();
+        pointerDrag = null;
+
+        if (target?.row) {
+          const overIdx = Number(target.row.dataset.index);
+          const toIdx = calcDropIndex(fromIdx, overIdx, target.insertBefore);
+          reorderCatalogItem(dragType, fromIdx, toIdx).catch((err) => showToast(err.message));
+        }
+      };
+
+      handle.addEventListener('pointerdown', startDrag);
+      handle.addEventListener('pointermove', moveDrag);
+      handle.addEventListener('pointerup', finishDrag);
+      handle.addEventListener('pointercancel', finishDrag);
+    });
+  });
 }
 
 function openAddModal(type) {
@@ -233,6 +352,14 @@ $('#logoutBtn').addEventListener('click', () => {
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 });
+
+const catalogSearchEl = document.getElementById('catalogSearch');
+if (catalogSearchEl) {
+  catalogSearchEl.addEventListener('input', (e) => {
+    catalogSearch = e.target.value;
+    render();
+  });
+}
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('#addModal').classList.contains('hidden')) {

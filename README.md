@@ -1,47 +1,54 @@
-# Lider Parfum
+# Lider Parfum — Frontend
 
-## O'rnatish
+Statik do'kon va admin panel (Vercel uchun).
+
+## Lokal ishga tushirish
+
+**1. Backend** (alohida terminal):
 
 ```bash
+cd backend
 npm install
 cp .env.example .env
-```
-
-`.env` faylida Telegram, admin paroli va Supabase kalitlarini kiriting.
-
-## Supabase sozlash
-
-1. [supabase.com](https://supabase.com) da loyiha yarating
-2. **SQL Editor** da `supabase/schema.sql` faylini to'liq nusxalab **RUN** bosing
-3. **Project Settings → API** dan oling:
-   - `SUPABASE_URL` → Project URL
-   - `SUPABASE_SERVICE_ROLE_KEY` → **service_role** (secret) — `sb_publishable_` emas!
-
-`PGRST205` xatosi — jadvallar hali yaratilmagan. `schema.sql` ni qayta ishga tushiring.
-
-## Ishga tushirish
-
-```bash
+# .env ni to'ldiring
 npm start
 ```
 
-- Sayt: http://localhost:3001
-- Admin: http://localhost:3001/admin
+**2. Frontend**:
 
-## Admin panel
+```bash
+cd frontend
+npm run dev
+```
 
-1. `.env` da `ADMIN_PASSWORD` o'rnating
-2. `/admin` ga kiring
-3. Brend va kategoriya qo'shing
-4. Mahsulot qo'shing, variantlar (hid, o'lcham) kiriting
-5. Rasm yuklang (fayl yoki link)
-6. **Saqlash** tugmasini bosing
+- Do'kon: http://localhost:3000
+- Admin: http://localhost:3000/admin
 
-Mahsulotlar Supabase da saqlanadi.
-Rasmlar `public/images/` papkasida (yoki tashqi link).
+Lokalda `public/config.js` avtomatik `http://localhost:3001` ga ulanadi.
 
-## Telegram bot
+## Vercel deploy
 
-1. [@BotFather](https://t.me/BotFather) da bot yarating
-2. Token → `TELEGRAM_BOT_TOKEN`
-3. Chat ID → [@userinfobot](https://t.me/userinfobot)
+1. Vercel da `frontend` papkani ulang
+2. **Environment Variables** qo'shing:
+   - `API_URL` = Railway backend URL (masalan: `https://xxx.up.railway.app`)
+3. Deploy — build avtomatik `config.js` yaratadi
+
+## Railway (backend)
+
+Backend sozlamalari uchun `../backend/README.md` ni o'qing.
+
+`FRONTEND_URL` ga Vercel domeningizni qo'shing (CORS uchun).
+
+## Struktura
+
+```
+public/
+├── index.html      — do'kon
+├── admin.html      — admin mahsulotlar
+├── admin-catalog.html
+├── config.js       — API URL (build da generatsiya)
+├── api.js          — apiUrl(), imageUrl()
+├── app.js
+├── admin.js
+└── admin-catalog.js
+```

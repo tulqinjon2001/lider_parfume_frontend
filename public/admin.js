@@ -1,16 +1,25 @@
 const TOKEN_KEY = 'lider_admin_token';
 const PLACEHOLDER = 'images/placeholder.svg';
 
+const ICON_TRASH = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+const ICON_SAVE = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/></svg>';
+const ICON_BOLT = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/></svg>';
+const ICON_UPLOAD = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>';
+const ICON_CAMERA = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 4 7.17 6H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-3.17L15 4H9zm3 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>';
+const ICON_IMAGE = '<svg class="variant-img-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+
 let products = [];
 let catalog = { brands: [], categories: [] };
 let editingIndex = null;
-let filterSearch = '';
-let filterBrand = '';
-let filterCategory = '';
 let token = localStorage.getItem(TOKEN_KEY);
 let autoSaveTimer = null;
 let saveInFlight = false;
 let queuedSaveMessage = null;
+let filterSearch = '';
+let filterBrands = [];
+let filterCategories = [];
+let draftBrands = [];
+let draftCategories = [];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -21,11 +30,105 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
+let confirmResolve = null;
+
+function ensureConfirmModal() {
+  if ($('#confirmModal')) return;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+      <div class="modal-dialog confirm-modal">
+        <div class="modal-header">
+          <h2 id="confirmModalTitle"></h2>
+          <button type="button" class="modal-close" data-action="confirm-cancel" aria-label="Yopish">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirmModalMessage" class="confirm-modal-message"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-ghost" data-action="confirm-cancel">Bekor qilish</button>
+          <button type="button" class="btn-danger btn-with-icon" id="confirmModalOk" data-action="confirm-ok"></button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const modal = $('#confirmModal');
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeConfirmModal(false);
+  });
+  modal.querySelectorAll('[data-action="confirm-cancel"]').forEach((btn) => {
+    btn.addEventListener('click', () => closeConfirmModal(false));
+  });
+  modal.querySelector('#confirmModalOk')?.addEventListener('click', () => closeConfirmModal(true));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || modal.classList.contains('hidden')) return;
+    closeConfirmModal(false);
+  });
+}
+
+function closeConfirmModal(result) {
+  $('#confirmModal')?.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  if (confirmResolve) {
+    confirmResolve(result);
+    confirmResolve = null;
+  }
+}
+
+function confirmDialog({
+  title = 'Tasdiqlash',
+  message = 'Davom etasizmi?',
+  confirmLabel = 'Ha',
+  danger = false,
+} = {}) {
+  ensureConfirmModal();
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    $('#confirmModalTitle').textContent = title;
+    $('#confirmModalMessage').textContent = message;
+    const okBtn = $('#confirmModalOk');
+    okBtn.innerHTML = danger ? `${ICON_TRASH} ${confirmLabel}` : confirmLabel;
+    okBtn.className = danger ? 'btn-danger btn-with-icon' : 'btn-primary';
+    $('#confirmModal').classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    requestAnimationFrame(() => okBtn.focus());
+  });
+}
+
+function deleteProductAt(pi) {
+  const [removed] = products.splice(pi, 1);
+  if (editingIndex === pi) editingIndex = null;
+  else if (editingIndex !== null && editingIndex > pi) editingIndex -= 1;
+
+  if (window.__ADMIN_PAGE === 'product') {
+    saveProducts('Mahsulot o\'chirildi')
+      .then(() => { window.location.href = '/admin'; })
+      .catch((err) => {
+        products.splice(pi, 0, removed);
+        editingIndex = pi;
+        render();
+        showToast(err.message);
+      });
+    return;
+  }
+
+  render();
+
+  saveProducts('Mahsulot o\'chirildi').catch((err) => {
+    products.splice(pi, 0, removed);
+    if (editingIndex === null) editingIndex = pi;
+    render();
+    showToast(err.message);
+  });
+}
+
 function authHeaders() {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
-async function api(url, options = {}) {
+async function api(path, options = {}) {
+  const url = path.startsWith('http') ? path : apiUrl(path);
   const res = await fetch(url, options);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Xatolik');
@@ -87,16 +190,10 @@ async function loadProducts() {
   render();
 }
 
-function pickerItems(items, selected) {
-  const list = [...items];
-  if (selected && !list.includes(selected)) list.unshift(selected);
-  return list;
-}
-
 function metaPicker(field, items, selected, index) {
   const type = field === 'brand' ? 'brand' : 'category';
   const label = field === 'brand' ? 'brend' : 'kategoriya';
-  const list = pickerItems(items, selected);
+  const list = orderedCatalogItems(items, selected);
   const options = list.map((item) => `
     <button
       type="button"
@@ -225,31 +322,61 @@ async function addCatalogItem(type, name, productIndex) {
 function sizesSection(pi, p) {
   const rows = (p.sizes || []).map((s, si) => `
     <div class="size-option-row">
-      <input type="text" value="${esc(s.label)}" placeholder="200ml" data-field="size-label" data-product="${pi}" data-size-index="${si}">
-      <input type="number" value="${s.price}" placeholder="Narx" data-field="size-price" data-product="${pi}" data-size-index="${si}" min="0" step="1000">
-      <button type="button" class="btn-danger btn-small" data-action="delete-size" data-product="${pi}" data-size-index="${si}">×</button>
+      <div class="size-field">
+        <span class="field-label">O'lcham</span>
+        <input type="text" class="editor-input" value="${esc(s.label)}" placeholder="3 kg" data-field="size-label" data-product="${pi}" data-size-index="${si}">
+      </div>
+      <div class="size-field">
+        <span class="field-label">Narx (so'm)</span>
+        <input type="number" class="editor-input" value="${s.price}" placeholder="0" data-field="size-price" data-product="${pi}" data-size-index="${si}" min="0" step="1000">
+      </div>
+      <button type="button" class="btn-icon-delete" data-action="delete-size" data-product="${pi}" data-size-index="${si}" title="O'chirish" aria-label="O'chirish">${ICON_TRASH}</button>
     </div>
   `).join('');
 
   return `
     <div class="sizes-section">
-      <div class="variants-title">O'lchamlar (narx bilan)</div>
+      <div class="section-title">O'lchamlar va narxlar</div>
       <div class="sizes-list">${rows || '<p class="sizes-empty">O\'lcham qo\'shing</p>'}</div>
-      <button type="button" class="btn-small" data-action="add-size" data-index="${pi}">+ O'lcham</button>
+      <button type="button" class="btn-add-size" data-action="add-size" data-index="${pi}">+ Yangi o'lcham qo'shish</button>
     </div>
   `;
 }
 
-function bulkSizeSelect(pi, p) {
-  const options = (p.sizes || []).map((s) => `
-    <option value="${esc(s.label)}">${esc(s.label)} — ${s.price.toLocaleString()} so'm</option>
-  `).join('');
+function sizeSelectItems(product, selected = '') {
+  const sizes = product.sizes || [];
+  if (!sizes.length) return [];
 
-  return `
-    <select data-bulk="size" data-index="${pi}" ${options ? '' : 'disabled'}>
-      ${options || '<option value="">O\'lcham yo\'q</option>'}
-    </select>
-  `;
+  const active = selected || sizes[0].label;
+  return sizes.map((s) => ({
+    value: s.label,
+    label: `${s.label} — ${formatUzs(s.price)}`,
+    selected: s.label === active,
+  }));
+}
+
+function renderSizeSelect(product, { selected = '', emptyLabel = "O'lcham yo'q", hiddenAttrs = {} } = {}) {
+  const items = sizeSelectItems(product, selected).map(({ value, label }) => ({ value, label }));
+  const value = items.find((item) => item.value === selected)?.value
+    || items[0]?.value
+    || '';
+
+  return buildAppSelect({
+    items,
+    value,
+    placeholder: emptyLabel,
+    disabled: !items.length,
+    hiddenAttrs,
+  });
+}
+
+function bulkSizeSelect(pi, p) {
+  const value = p.sizes?.[0]?.label || '';
+  return renderSizeSelect(p, {
+    selected: value,
+    emptyLabel: "O'lcham yo'q",
+    hiddenAttrs: { bulk: 'size', index: pi },
+  });
 }
 
 function getProductThumb(p) {
@@ -269,308 +396,341 @@ function getPriceRange(p) {
   return `${min.toLocaleString()} – ${max.toLocaleString()} so'm`;
 }
 
-function scrollToEditor(pi) {
+function scrollToEditor() {
+  if (window.__ADMIN_PAGE === 'product') return;
   requestAnimationFrame(() => {
-    document.getElementById(`editor-row-${pi}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.getElementById('productEditorPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
-function normalizeEditingIndex() {
-  if (editingIndex !== null && editingIndex >= products.length) {
-    editingIndex = products.length ? products.length - 1 : null;
-  }
+function catalogFilterItems(type) {
+  const key = type === 'brand' ? 'brands' : 'categories';
+  const fromProducts = products.map((p) => p[type]).filter(Boolean);
+  return orderedCatalogItems([...new Set([...(catalog[key] || []), ...fromProducts])]);
 }
 
-function getFilterBrands() {
-  const fromProducts = products.map((p) => p.brand).filter(Boolean);
-  return [...new Set([...catalog.brands, ...fromProducts])].sort((a, b) => a.localeCompare(b, 'uz'));
+function activeFilterCount() {
+  return filterBrands.length + filterCategories.length;
 }
 
-function getFilterCategories() {
-  const fromProducts = products.map((p) => p.category).filter(Boolean);
-  return [...new Set([...catalog.categories, ...fromProducts])].sort((a, b) => a.localeCompare(b, 'uz'));
+function hasActiveProductFilters() {
+  return Boolean(filterSearch.trim()) || activeFilterCount() > 0;
 }
 
-function filteredProductEntries() {
+function filteredProducts() {
   const q = filterSearch.trim().toLowerCase();
   return products
-    .map((p, pi) => ({ p, pi }))
-    .filter(({ p, pi }) => {
-      if (pi === editingIndex) return true;
-      if (filterBrand && p.brand !== filterBrand) return false;
-      if (filterCategory && p.category !== filterCategory) return false;
+    .map((p, i) => ({ product: p, index: i }))
+    .filter(({ product: p }) => {
+      if (filterBrands.length && !filterBrands.includes(p.brand)) return false;
+      if (filterCategories.length && !filterCategories.includes(p.category)) return false;
       if (q) {
         const haystack = [p.name, p.brand, p.category].filter(Boolean).join(' ').toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
-    });
+    })
+    .reverse();
 }
 
-function closeAdminFilterDropdowns() {
-  document.querySelectorAll('#adminFilters .filter-dropdown.is-open').forEach((wrap) => {
-    wrap.classList.remove('is-open');
-    const btn = wrap.querySelector('.filter-dropdown-btn');
-    const menu = wrap.querySelector('.filter-dropdown-menu');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-    if (menu) menu.hidden = true;
-  });
+const ICON_FILTER = '<svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>';
+
+function syncProductSearchInputs() {
+  const pageSearch = document.getElementById('productsPageSearch');
+  const headerSearch = document.getElementById('adminSearch');
+  if (pageSearch && pageSearch.value !== filterSearch) pageSearch.value = filterSearch;
+  if (headerSearch && headerSearch.value !== filterSearch) headerSearch.value = filterSearch;
 }
 
-function buildAdminFilterDropdown(id, placeholder, currentValue, options) {
-  const label = currentValue || placeholder;
-  const items = [{ value: '', label: placeholder }, ...options.map((o) => ({ value: o, label: o }))];
-  const menuItems = items.map((item) => `
-    <button
-      type="button"
-      class="filter-dropdown-item${currentValue === item.value ? ' is-selected' : ''}"
-      data-value="${esc(item.value)}"
-      role="option"
-      aria-selected="${currentValue === item.value}"
-    >
-      <span>${esc(item.label)}</span>
-      <svg class="filter-dropdown-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-        <path d="M20 6L9 17l-5-5"/>
-      </svg>
-    </button>
-  `).join('');
-
+function renderProductsToolbar() {
+  const count = activeFilterCount();
   return `
-    <div class="filter-dropdown" data-filter-id="${id}">
-      <button type="button" class="filter-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
-        <span class="filter-dropdown-label">${esc(label)}</span>
-        <svg class="filter-dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M6 9l6 6 6-6"/>
+    <div class="products-toolbar">
+      <div class="products-search">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>
         </svg>
-      </button>
-      <div class="filter-dropdown-menu" role="listbox" hidden>
-        ${menuItems}
+        <input
+          type="search"
+          id="productsPageSearch"
+          class="products-page-search-input"
+          placeholder="Mahsulot, brend yoki kategoriya..."
+          value="${esc(filterSearch)}"
+          autocomplete="off"
+        >
       </div>
-    </div>
-  `;
-}
-
-function renderAdminFilters() {
-  const el = $('#adminFilters');
-  if (!el) return;
-
-  el.innerHTML = `
-    <div class="search-box">
-      <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"/>
-        <line x1="16.5" y1="16.5" x2="21" y2="21"/>
-      </svg>
-      <input type="search" id="adminSearchInput" class="search-input" placeholder="Mahsulotlarni qidirish..." value="${esc(filterSearch)}">
-    </div>
-    ${buildAdminFilterDropdown('adminFilterBrand', 'Barcha brendlar', filterBrand, getFilterBrands())}
-    ${buildAdminFilterDropdown('adminFilterCategory', 'Barcha kategoriyalar', filterCategory, getFilterCategories())}
-  `;
-}
-
-function updateAdminProductCount() {
-  const el = $('#adminProductCount');
-  if (!el) return;
-  const shown = filteredProductEntries().length;
-  el.textContent = shown === products.length
-    ? `${products.length} ta mahsulot`
-    : `${shown} / ${products.length} ta mahsulot`;
-}
-
-function renderAdminTable() {
-  const wrap = $('#adminTableWrap');
-  if (!wrap) return;
-
-  const entries = filteredProductEntries();
-
-  if (!entries.length) {
-    wrap.innerHTML = `
-      <div class="products-empty products-empty--filter">
-        <p>Natija topilmadi</p>
-        <span class="products-empty-hint">Qidiruv yoki filtrlarni o'zgartirib ko'ring</span>
-      </div>`;
-    return;
-  }
-
-  const rows = entries.flatMap(({ p, pi }) => {
-    const main = productTableRow(p, pi);
-    if (editingIndex !== pi) return [main];
-    return [main, `
-      <tr class="editor-row" id="editor-row-${pi}">
-        <td colspan="6">
-          <div class="editor-panel">
-            ${renderProductEditor(pi, p)}
-          </div>
-        </td>
-      </tr>`];
-  });
-
-  wrap.innerHTML = `
-    <div class="products-table-wrap">
-      <table class="products-table">
-        <thead>
-          <tr>
-            <th>Mahsulot Nomi</th>
-            <th>Brand</th>
-            <th>Kategoriya</th>
-            <th class="col-num">Turlari</th>
-            <th>Narxi</th>
-            <th class="col-actions">Amallar</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.join('')}
-        </tbody>
-      </table>
+      <button
+        type="button"
+        class="products-filter-btn${count ? ' is-active' : ''}"
+        data-action="open-filter"
+        aria-label="Filter"
+      >
+        ${ICON_FILTER}
+        <span>Filter</span>
+        ${count ? `<span class="products-filter-badge">${count}</span>` : ''}
+      </button>
     </div>`;
 }
 
-function bindAdminFilterEvents() {
-  const filters = $('#adminFilters');
-  if (!filters || filters._dropdownBound) return;
-  filters._dropdownBound = true;
+function renderFilterChecklist(type, items, selected) {
+  if (!items.length) {
+    const label = type === 'brand' ? 'Brend' : 'Kategoriya';
+    return `<p class="filter-empty">${label} yo'q</p>`;
+  }
+  return items.map((item) => `
+    <label class="filter-check">
+      <input
+        type="checkbox"
+        data-action="filter-toggle"
+        data-type="${type}"
+        value="${esc(item)}"
+        ${selected.includes(item) ? 'checked' : ''}
+      >
+      <span class="filter-check-box" aria-hidden="true"></span>
+      <span class="filter-check-label">${esc(item)}</span>
+    </label>
+  `).join('');
+}
 
-  filters.addEventListener('input', (e) => {
-    if (e.target.id !== 'adminSearchInput') return;
-    filterSearch = e.target.value;
-    updateAdminProductCount();
-    renderAdminTable();
+function ensureFilterModal() {
+  if ($('#filterModal')) return;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="filterModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="filterModalTitle">
+      <div class="modal-dialog filter-modal">
+        <div class="modal-header">
+          <h2 id="filterModalTitle">Filter</h2>
+          <button type="button" class="modal-close" data-action="close-filter" aria-label="Yopish">&times;</button>
+        </div>
+        <div class="modal-body filter-modal-body">
+          <section class="filter-section">
+            <h3 class="filter-section-title">Brendlar</h3>
+            <div class="filter-checklist" id="filterBrandList"></div>
+          </section>
+          <section class="filter-section">
+            <h3 class="filter-section-title">Kategoriyalar</h3>
+            <div class="filter-checklist" id="filterCategoryList"></div>
+          </section>
+        </div>
+        <div class="modal-footer filter-modal-footer">
+          <button type="button" class="btn-ghost" data-action="clear-filter">Tozalash</button>
+          <button type="button" class="btn-primary" data-action="apply-filter">Qo'llash</button>
+        </div>
+      </div>
+    </div>
+  `);
+
+  const modal = $('#filterModal');
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeFilterModal(false);
   });
+}
 
-  filters.addEventListener('click', (e) => {
-    if (e.target.closest('.filter-dropdown-menu')) {
-      e.stopPropagation();
-    }
+function refreshFilterModalLists() {
+  $('#filterBrandList').innerHTML = renderFilterChecklist('brand', catalogFilterItems('brand'), draftBrands);
+  $('#filterCategoryList').innerHTML = renderFilterChecklist('category', catalogFilterItems('category'), draftCategories);
+}
 
-    const btn = e.target.closest('.filter-dropdown-btn');
-    if (btn) {
-      e.stopPropagation();
-      const wrap = btn.closest('.filter-dropdown');
-      const menu = wrap.querySelector('.filter-dropdown-menu');
-      const isOpen = wrap.classList.contains('is-open');
-      closeAdminFilterDropdowns();
-      if (!isOpen) {
-        wrap.classList.add('is-open');
-        btn.setAttribute('aria-expanded', 'true');
-        menu.hidden = false;
-      }
-      return;
-    }
+function openFilterModal() {
+  ensureFilterModal();
+  draftBrands = [...filterBrands];
+  draftCategories = [...filterCategories];
+  refreshFilterModalLists();
+  $('#filterModal').classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
 
-    const item = e.target.closest('.filter-dropdown-item');
-    if (!item) return;
+function closeFilterModal(apply) {
+  if (apply) {
+    filterBrands = [...draftBrands];
+    filterCategories = [...draftCategories];
+    render();
+  }
+  $('#filterModal')?.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+}
 
-    const wrap = item.closest('.filter-dropdown');
-    const filterId = wrap.dataset.filterId;
-    const value = item.dataset.value;
-    const placeholder = filterId === 'adminFilterBrand' ? 'Barcha brendlar' : 'Barcha kategoriyalar';
+function toggleDraftFilter(type, value, checked) {
+  const list = type === 'brand' ? draftBrands : draftCategories;
+  const idx = list.indexOf(value);
+  if (checked && idx === -1) list.push(value);
+  if (!checked && idx !== -1) list.splice(idx, 1);
+}
 
-    if (filterId === 'adminFilterBrand') filterBrand = value;
-    else filterCategory = value;
+function buildProductsCountLabel(listLength, total) {
+  if (!hasActiveProductFilters()) {
+    return `Sizning do'koningizda ${total} ta mahsulot mavjud`;
+  }
+  return `${listLength} ta ko'rsatilmoqda (${total} tadan)`;
+}
 
-    wrap.querySelector('.filter-dropdown-label').textContent = value || placeholder;
-    wrap.querySelectorAll('.filter-dropdown-item').forEach((el) => {
-      const selected = el.dataset.value === value;
-      el.classList.toggle('is-selected', selected);
-      el.setAttribute('aria-selected', selected);
-    });
+const EDIT_ICON = `<svg viewBox="0 0 24 24" class="edit-icon" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92-9 9.06zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
 
-    closeAdminFilterDropdowns();
-    updateAdminProductCount();
-    renderAdminTable();
-  });
+function productCard(p, pi) {
+  return `
+    <article class="product-card" data-product-index="${pi}">
+      <a
+        href="/admin/product?index=${pi}"
+        class="product-card-edit"
+        title="Tahrirlash"
+        aria-label="Tahrirlash"
+      >${EDIT_ICON}</a>
+      <h3 class="product-card-title">${esc(p.name) || '—'}</h3>
+      <dl class="product-card-meta">
+        <div class="product-card-row">
+          <dt>Brand</dt>
+          <dd>${p.brand ? esc(p.brand) : '—'}</dd>
+        </div>
+        <div class="product-card-row">
+          <dt>Kategoriya</dt>
+          <dd>${p.category ? `<span class="table-pill">${esc(p.category)}</span>` : '—'}</dd>
+        </div>
+        <div class="product-card-row">
+          <dt>Turlari</dt>
+          <dd>${p.variants?.length || 0}</dd>
+        </div>
+        <div class="product-card-row">
+          <dt>Narxi</dt>
+          <dd class="product-card-price">${getPriceRange(p)}</dd>
+        </div>
+      </dl>
+    </article>`;
+}
 
-  document.addEventListener('click', closeAdminFilterDropdowns);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeAdminFilterDropdowns();
-  });
+function renderAddProductCard() {
+  return `
+    <a href="/admin/product/new" class="product-card product-card-add">
+      <span class="product-card-add-icon" aria-hidden="true">+</span>
+      <span class="product-card-add-title">Yangi mahsulot qo'shish</span>
+      <span class="product-card-add-hint">Yangi parfyum yoki kosmetika qo'shing</span>
+    </a>`;
 }
 
 function renderOverview() {
   const el = $('#productsOverview');
-  normalizeEditingIndex();
+  if (!el) return;
+  const list = filteredProducts();
+  const total = products.length;
+  const countLabel = buildProductsCountLabel(list.length, total);
 
-  if (!products.length) {
+  if (!total) {
     el.innerHTML = `
       <div class="page-head">
         <h1 class="page-title">Mahsulotlar</h1>
         <p class="page-desc">Hali mahsulot yo'q</p>
       </div>
-      <div class="products-empty">
-        <p>Mahsulot yo'q</p>
-        <span class="products-empty-hint">Yuqoridagi <strong>+ Mahsulot</strong> tugmasini bosing</span>
+      <div class="products-grid products-grid-empty">
+        ${renderAddProductCard()}
       </div>`;
     return;
   }
 
-  if (!el.querySelector('#adminFilters')) {
-    el.innerHTML = `
-      <div class="page-head">
-        <div class="page-head-top">
-          <div class="page-head-text">
-            <h1 class="page-title">Mahsulotlar</h1>
-            <p class="page-desc" id="adminProductCount"></p>
-          </div>
-          <div class="admin-toolbar" id="adminFilters"></div>
-        </div>
-      </div>
-      <div id="adminTableWrap"></div>`;
-    bindAdminFilterEvents();
-    renderAdminFilters();
-  }
+  const cards = list.map(({ product: p, index: pi }) => productCard(p, pi)).join('');
 
-  updateAdminProductCount();
-  renderAdminTable();
+  el.innerHTML = `
+    <div class="page-head">
+      <h1 class="page-title">Mahsulotlar</h1>
+      <p class="page-desc">${countLabel}</p>
+    </div>
+    ${renderProductsToolbar()}
+    <div class="products-grid">
+      ${renderAddProductCard()}
+      ${cards || '<p class="products-no-results">Qidiruv yoki filter bo\'yicha mahsulot topilmadi</p>'}
+    </div>`;
+  syncProductSearchInputs();
 }
 
-function productTableRow(p, pi) {
-  const isActive = editingIndex === pi;
-  const editIcon = isActive
-    ? `<svg viewBox="0 0 24 24" class="edit-icon" aria-hidden="true">
-        <path d="M18.3 5.71L12 12l6.3 6.29-1.41 1.42L12 13.41l-6.29 6.3-1.42-1.42L10.59 12 4.29 5.71 5.7 4.29 12 10.59l6.29-6.3z" />
-      </svg>`
-    : `<svg viewBox="0 0 24 24" class="edit-icon" aria-hidden="true">
-        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l9.06-9.06.92.92-9 9.06zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-      </svg>`;
-  return `
-    <tr class="product-row ${isActive ? 'is-active' : ''}" data-product-index="${pi}">
-      <td><span class="table-name-text">${esc(p.name) || '—'}</span></td>
-      <td><span class="table-brand">${p.brand ? esc(p.brand) : '—'}</span></td>
-      <td><span class="table-pill">${p.category ? esc(p.category) : '—'}</span></td>
-      <td class="col-num">${p.variants?.length || 0}</td>
-      <td class="col-price">${getPriceRange(p)}</td>
-      <td class="col-actions">
-        <button
-          type="button"
-          class="btn-small btn-edit ${isActive ? 'is-open' : ''}"
-          data-action="edit-product"
-          data-index="${pi}"
-          title="${isActive ? 'Yopish' : 'Tahrirlash'}"
-        >
-          ${editIcon}
-        </button>
-      </td>
-    </tr>`;
+function createNewProductDraft() {
+  const id = nextProductId();
+  products.push({
+    id,
+    name: 'Yangi mahsulot',
+    brand: catalog.brands[0] || '',
+    category: catalog.categories[0] || '',
+    sizes: [{ label: '100ml', price: 0 }],
+    variants: [{ id: `${id}-edt-100ml`, scent: 'EDT', size: '100ml', price: 0, image: PLACEHOLDER }],
+  });
+  return products.length - 1;
+}
+
+function addNewProduct() {
+  window.location.href = '/admin/product/new';
+}
+
+function renderProductPage() {
+  const el = $('#productEditorRoot');
+  if (!el || editingIndex === null || !products[editingIndex]) return;
+  el.innerHTML = renderProductEditor(editingIndex, products[editingIndex]);
+  const p = products[editingIndex];
+  document.title = `${p.name || 'Mahsulot'} — Lider Parfum`;
+}
+
+async function bootstrapProductPage() {
+  const isNew = location.pathname.endsWith('/new');
+  const indexParam = new URLSearchParams(location.search).get('index');
+
+  [products, catalog] = await Promise.all([
+    api('/api/admin/products', { headers: authHeaders() }),
+    api('/api/admin/catalog', { headers: authHeaders() }),
+  ]);
+  products.forEach(ensureSizes);
+
+  if (isNew) {
+    editingIndex = createNewProductDraft();
+    await persistProducts('Mahsulot qo\'shildi');
+  } else if (indexParam !== null && indexParam !== '') {
+    editingIndex = Number(indexParam);
+    if (!Number.isInteger(editingIndex) || editingIndex < 0 || editingIndex >= products.length) {
+      window.location.replace('/admin');
+      return;
+    }
+  } else {
+    window.location.replace('/admin');
+    return;
+  }
+
+  render();
+}
+
+async function initProductPage() {
+  if (await checkAuth()) {
+    showAdmin();
+    await bootstrapProductPage();
+  } else {
+    showLogin();
+  }
+}
+
+function isNewProductPage() {
+  return window.__ADMIN_PAGE === 'product' && location.pathname.endsWith('/new');
+}
+
+function editorTitle(p) {
+  if (isNewProductPage()) return 'Yangi mahsulot';
+  return esc(p.name) || 'Mahsulot tahrirlash';
 }
 
 function renderProductEditor(pi, p) {
+  const closeLabel = 'Yopish';
   return `
     <div class="admin-product" data-index="${pi}">
       <div class="editor-toolbar">
-        <div>
-          <h2 id="editor-title-${pi}">${esc(p.name) || 'Mahsulot'}</h2>
-          <span class="editor-subtitle">O'lchamlar, hidlar va rasmlar</span>
+        <div class="editor-toolbar-head">
+          <h2 id="editor-title-${pi}">${editorTitle(p)}</h2>
+          <span class="editor-subtitle">Mahsulot tafsilotlarini yangilang</span>
         </div>
         <div class="editor-toolbar-actions">
-          <button type="button" class="btn-danger btn-small" data-action="delete-product" data-index="${pi}">O'chirish</button>
-          <button type="button" class="btn-ghost btn-small" data-action="close-editor" data-index="${pi}">Yopish</button>
+          <button type="button" class="btn-danger btn-with-icon" data-action="delete-product" data-index="${pi}">${ICON_TRASH} O'chirish</button>
+          <button type="button" class="btn-ghost" data-action="close-editor" data-index="${pi}">${closeLabel}</button>
         </div>
       </div>
+
       <div class="product-meta-edit">
         <div class="meta-field">
-          <span class="variants-title">Mahsulot nomi</span>
+          <span class="field-label">Mahsulot nomi</span>
           <input
             type="text"
-            class="table-input"
+            class="editor-input"
             value="${esc(p.name)}"
             data-field="name"
             data-index="${pi}"
@@ -578,70 +738,112 @@ function renderProductEditor(pi, p) {
           >
         </div>
         <div class="meta-field">
-          <span class="variants-title">Brend</span>
+          <span class="field-label">Brend</span>
           ${metaPicker('brand', catalog.brands, p.brand || '', pi)}
         </div>
         <div class="meta-field">
-          <span class="variants-title">Kategoriya</span>
+          <span class="field-label">Kategoriya</span>
           ${metaPicker('category', catalog.categories, p.category || '', pi)}
         </div>
       </div>
+
       <div class="variants-section">
         ${sizesSection(pi, p)}
-        <div class="variants-title">Hidlar (variantlar)</div>
+
+        <div class="section-title">Hidlar (variantlar)</div>
         <div class="bulk-add" data-index="${pi}">
-          <span class="bulk-label">Tez qo'shish:</span>
           ${bulkSizeSelect(pi, p)}
-          <input type="number" placeholder="Hidlar soni" data-bulk="count" data-index="${pi}" min="1" max="50" value="10">
-          <input type="text" placeholder="Hid prefiksi (Hid)" data-bulk="prefix" data-index="${pi}" value="Hid">
-          <button type="button" class="btn-small" data-action="bulk-add" data-index="${pi}">Qo'shish</button>
+          <input type="number" class="editor-input bulk-count" placeholder="10" data-bulk="count" data-index="${pi}" min="1" max="50" value="10" aria-label="Hidlar soni">
+          <input type="text" class="editor-input bulk-prefix" placeholder="Hid/Rang nomi" data-bulk="prefix" data-index="${pi}" value="">
+          <button type="button" class="btn-quick-add" data-action="bulk-add" data-index="${pi}">${ICON_BOLT} Tez qo'shish</button>
         </div>
-        ${p.variants.map((v, vi) => variantRow(pi, vi, v, p)).join('')}
-        <button type="button" class="btn-small add-variant-btn" data-action="add-variant" data-index="${pi}">+ Variant</button>
+
+        <div class="variants-grid">
+          ${p.variants.map((v, vi) => variantRow(pi, vi, v, p)).join('')}
+        </div>
+        <button type="button" class="btn-add-variant" data-action="add-variant" data-index="${pi}">+ Variant qo'shish</button>
+      </div>
+
+      <div class="editor-footer">
+        <button type="button" class="btn-ghost" data-action="close-editor" data-index="${pi}">Bekor qilish</button>
+        <button type="button" class="btn-save btn-with-icon" data-action="save-product" data-index="${pi}">${ICON_SAVE} Saqlash</button>
       </div>
     </div>`;
 }
 
 function render() {
   products.forEach(ensureSizes);
-  renderOverview();
+  if (window.__ADMIN_PAGE === 'product') renderProductPage();
+  else renderOverview();
+}
+
+function variantCardTitle(p, v) {
+  const name = (p.name || '').trim();
+  const size = (v.size || '').trim();
+  if (name && size) return `${name} ${size}`;
+  if (name) return name;
+  if (v.scent) return v.scent;
+  return 'Variant';
 }
 
 function variantRow(pi, vi, v, p) {
   const img = v.image || PLACEHOLDER;
   const isExternal = /^https?:\/\//i.test(v.image || '');
-  const options = (p.sizes || []).map((s) => `
-    <option value="${esc(s.label)}" ${s.label === v.size ? 'selected' : ''}>${esc(s.label)}</option>
-  `).join('');
+  const hasImage = v.image && v.image !== PLACEHOLDER;
+  const options = renderSizeSelect(p, {
+    selected: v.size,
+    emptyLabel: "O'lcham qo'shing",
+    hiddenAttrs: { field: 'size', product: pi, variant: vi },
+  });
 
   return `
-    <div class="variant-row" data-product="${pi}" data-variant="${vi}">
-      <div class="variant-img-col">
-        <label class="variant-img-wrap" title="Kompyuterdan yuklash">
-          <img src="${img}" alt="" onerror="this.src='${PLACEHOLDER}'">
-          <span class="variant-img-overlay">Fayl</span>
+    <div class="variant-card" data-product="${pi}" data-variant="${vi}">
+      <div class="variant-card-header">
+        <span class="variant-card-title">${esc(variantCardTitle(p, v))}</span>
+        <button type="button" class="variant-card-close" data-action="delete-variant" data-product="${pi}" data-variant="${vi}" aria-label="O'chirish">×</button>
+      </div>
+      <div class="variant-card-body">
+        <label class="variant-img-wrap" title="Galereyadan yuklash">
+          ${hasImage
+            ? `<img src="${imageUrl(img)}" alt="" onerror="imgFallback(event)">`
+            : `<span class="variant-img-placeholder">${ICON_IMAGE}<span>RASM</span></span>`}
+          <span class="variant-img-overlay">Galereya</span>
           <input type="file" accept="image/*" data-action="upload" data-product="${pi}" data-variant="${vi}">
         </label>
-      </div>
-      <div class="variant-fields">
-        <input type="text" value="${esc(v.scent)}" placeholder="Hid nomi" data-field="scent" data-product="${pi}" data-variant="${vi}">
-        <select data-field="size" data-product="${pi}" data-variant="${vi}" ${options ? '' : 'disabled'}>
-          ${options || '<option value="">O\'lcham qo\'shing</option>'}
-        </select>
-        <div class="img-url-row">
-          <input
-            type="url"
-            value="${isExternal ? esc(v.image) : ''}"
-            placeholder="Rasm linki — https://..."
-            data-field="image-url"
-            data-product="${pi}"
-            data-variant="${vi}"
-          >
-          <button type="button" class="btn-small" data-action="upload-url" data-product="${pi}" data-variant="${vi}">Yuklash</button>
-          <button type="button" class="btn-small" data-action="save-url" data-product="${pi}" data-variant="${vi}" title="Yuklamasdan, faqat link saqlash">↗</button>
+        <div class="variant-fields">
+          <input type="hidden" value="${esc(v.scent)}" data-field="scent" data-product="${pi}" data-variant="${vi}">
+          <div class="variant-field">
+            <span class="field-label">O'lcham</span>
+            ${options}
+          </div>
+          <div class="img-url-row">
+            <input
+              type="url"
+              class="editor-input"
+              value="${isExternal ? esc(v.image) : ''}"
+              placeholder="Rasm URL havolasi..."
+              data-field="image-url"
+              data-product="${pi}"
+              data-variant="${vi}"
+            >
+          </div>
+          <div class="img-upload-actions">
+            <button type="button" class="btn-upload" data-action="upload-url" data-product="${pi}" data-variant="${vi}">${ICON_UPLOAD} Yuklash</button>
+            <button type="button" class="btn-upload btn-camera" data-action="trigger-camera" data-product="${pi}" data-variant="${vi}">${ICON_CAMERA} Kameradan</button>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              class="variant-file-hidden"
+              data-action="upload-camera"
+              data-product="${pi}"
+              data-variant="${vi}"
+              tabindex="-1"
+              aria-hidden="true"
+            >
+          </div>
         </div>
       </div>
-      <button type="button" class="btn-danger btn-small" data-action="delete-variant" data-product="${pi}" data-variant="${vi}">×</button>
     </div>
   `;
 }
@@ -698,7 +900,7 @@ async function uploadImage(file, pi, vi) {
   const form = new FormData();
   form.append('image', file);
 
-  const res = await fetch('/api/admin/upload', {
+  const res = await fetch(apiUrl('/api/admin/upload'), {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -751,8 +953,6 @@ function showLogin() {
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#loginError').textContent = '';
-  const btn = e.target.querySelector('button[type="submit"]');
-  setButtonLoading(btn, true, 'Kirish...');
 
   try {
     const { token: t } = await api('/api/admin/login', {
@@ -763,12 +963,13 @@ $('#loginForm').addEventListener('submit', async (e) => {
     token = t;
     localStorage.setItem(TOKEN_KEY, token);
     showAdmin();
-    $('#productsOverview').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
-    await loadProducts();
+    if (window.__ADMIN_PAGE === 'product') {
+      await bootstrapProductPage();
+    } else {
+      await loadProducts();
+    }
   } catch (err) {
     $('#loginError').textContent = err.message;
-  } finally {
-    setButtonLoading(btn, false);
   }
 });
 
@@ -778,20 +979,13 @@ $('#logoutBtn').addEventListener('click', () => {
   showLogin();
 });
 
-$('#addProductBtn').addEventListener('click', () => {
-  const id = nextProductId();
-  products.push({
-    id,
-    name: 'Yangi mahsulot',
-    brand: catalog.brands[0] || '',
-    category: catalog.categories[0] || '',
-    sizes: [{ label: '100ml', price: 0 }],
-    variants: [{ id: `${id}-edt-100ml`, scent: 'EDT', size: '100ml', price: 0, image: PLACEHOLDER }],
-  });
-  editingIndex = products.length - 1;
+$('#addProductBtn')?.addEventListener('click', addNewProduct);
+
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'productsPageSearch' && e.target.id !== 'adminSearch') return;
+  filterSearch = e.target.value;
+  syncProductSearchInputs();
   render();
-  scrollToEditor(editingIndex);
-  persistProducts('Mahsulot qo\'shildi').catch((err) => showToast(err.message));
 });
 
 document.addEventListener('input', (e) => {
@@ -801,7 +995,15 @@ document.addEventListener('input', (e) => {
   if (field === 'name') {
     products[Number(index)].name = e.target.value;
     const title = document.getElementById(`editor-title-${index}`);
-    if (title) title.textContent = e.target.value || 'Mahsulot';
+    if (title && !isNewProductPage()) {
+      title.textContent = e.target.value || 'Mahsulot tahrirlash';
+    }
+    document.querySelectorAll(`.variant-card[data-product="${index}"]`).forEach((card) => {
+      const vi = Number(card.dataset.variant);
+      const v = products[Number(index)].variants[vi];
+      const titleEl = card.querySelector('.variant-card-title');
+      if (v && titleEl) titleEl.textContent = variantCardTitle(products[Number(index)], v);
+    });
     queueAutoSave();
     return;
   }
@@ -845,6 +1047,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.dataset.action === 'filter-toggle') {
+    toggleDraftFilter(e.target.dataset.type, e.target.value, e.target.checked);
+    return;
+  }
+
   const { field, product, variant, action } = e.target.dataset;
 
   if (field === 'size-label' || field === 'size-price') {
@@ -852,7 +1059,7 @@ document.addEventListener('change', (e) => {
     return;
   }
 
-  if (action === 'upload') {
+  if (action === 'upload' || action === 'upload-camera') {
     const file = e.target.files[0];
     if (!file) return;
     const pi = Number(e.target.dataset.product);
@@ -868,6 +1075,9 @@ document.addEventListener('change', (e) => {
   const vi = Number(variant);
   products[pi].variants[vi].size = e.target.value;
   products[pi].variants[vi].price = getSizePrice(products[pi], e.target.value);
+  const card = e.target.closest('.variant-card');
+  const titleEl = card?.querySelector('.variant-card-title');
+  if (titleEl) titleEl.textContent = variantCardTitle(products[pi], products[pi].variants[vi]);
   queueAutoSave();
 });
 
@@ -878,7 +1088,11 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeAllPickers();
+  if (e.key === 'Escape') {
+    closeAllPickers();
+    closeAllAppSelects();
+    if (!$('#filterModal')?.classList.contains('hidden')) closeFilterModal(false);
+  }
   if (e.key === 'Enter' && e.target.dataset.action === 'picker-add-input') {
     e.preventDefault();
     e.target.closest('.meta-picker')
@@ -895,6 +1109,7 @@ document.addEventListener('click', (e) => {
 
   if (action === 'toggle-picker') {
     e.stopPropagation();
+    closeAllAppSelects();
     const picker = actionEl.closest('.meta-picker');
     const wasOpen = picker.classList.contains('is-open');
     closeAllPickers();
@@ -950,34 +1165,64 @@ document.addEventListener('click', (e) => {
   const vi = Number(actionEl.dataset.variant);
   const si = Number(actionEl.dataset.sizeIndex);
 
-  if (action === 'close-editor') {
-    editingIndex = null;
-    render();
+  if (action === 'open-filter') {
+    openFilterModal();
     return;
   }
 
-  if (action === 'edit-product') {
-    const wasOpen = editingIndex === pi;
-    editingIndex = wasOpen ? null : pi;
-    render();
-    if (!wasOpen) scrollToEditor(pi);
+  if (action === 'close-filter') {
+    closeFilterModal(false);
+    return;
+  }
+
+  if (action === 'apply-filter') {
+    closeFilterModal(true);
+    return;
+  }
+
+  if (action === 'clear-filter') {
+    draftBrands = [];
+    draftCategories = [];
+    refreshFilterModalLists();
+    return;
+  }
+
+  if (action === 'add-product-card') {
+    addNewProduct();
+    return;
+  }
+
+  if (action === 'close-editor') {
+    if (window.__ADMIN_PAGE === 'product') {
+      window.location.href = '/admin';
+    } else {
+      editingIndex = null;
+      render();
+    }
+    return;
+  }
+
+  if (action === 'save-product') {
+    clearTimeout(autoSaveTimer);
+    persistProducts('Saqlandi')
+      .then(() => {
+        if (window.__ADMIN_PAGE === 'product') {
+          window.location.href = '/admin';
+        }
+      })
+      .catch((err) => showToast(err.message));
     return;
   }
 
   if (action === 'delete-product') {
     e.stopPropagation();
-    if (!confirm('Mahsulotni o\'chirasizmi?')) return;
-
-    const [removed] = products.splice(pi, 1);
-    if (editingIndex === pi) editingIndex = null;
-    else if (editingIndex !== null && editingIndex > pi) editingIndex -= 1;
-    render();
-
-    saveProducts('Mahsulot o\'chirildi').catch((err) => {
-      products.splice(pi, 0, removed);
-      if (editingIndex === null) editingIndex = pi;
-      render();
-      showToast(err.message);
+    confirmDialog({
+      title: 'Mahsulotni o\'chirish',
+      message: 'Mahsulotni o\'chirasizmi? Bu amalni ortga qaytarib bo\'lmaydi.',
+      confirmLabel: 'O\'chirish',
+      danger: true,
+    }).then((ok) => {
+      if (ok) deleteProductAt(pi);
     });
     return;
   }
@@ -1018,7 +1263,7 @@ document.addEventListener('click', (e) => {
 
   if (action === 'bulk-add') {
     const panel = e.target.closest('.bulk-add');
-    const size = panel.querySelector('[data-bulk="size"]').value.trim();
+    const size = panel.querySelector('input[data-bulk="size"]')?.value.trim();
     const count = Number(panel.querySelector('[data-bulk="count"]').value) || 0;
     const prefix = panel.querySelector('[data-bulk="prefix"]').value.trim() || 'Hid';
 
@@ -1063,6 +1308,13 @@ document.addEventListener('click', (e) => {
     uploadImageFromUrl(url, pi, vi).catch((err) => showToast(err.message));
   }
 
+  if (action === 'trigger-camera') {
+    actionEl.closest('.variant-card')
+      ?.querySelector('[data-action="upload-camera"]')
+      ?.click();
+    return;
+  }
+
   if (action === 'save-url') {
     const input = getImageUrlInput(pi, vi);
     saveExternalUrl(pi, vi, input?.value.trim());
@@ -1070,21 +1322,13 @@ document.addEventListener('click', (e) => {
 });
 
 (async () => {
-  showBootLoader();
-  if (await checkAuth()) {
-    hideBootLoader();
+  initAppSelectHandlers();
+  if (window.__ADMIN_PAGE === 'product') {
+    await initProductPage();
+  } else if (await checkAuth()) {
     showAdmin();
-    $('#productsOverview').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
-    try {
-      await loadProducts();
-    } catch (err) {
-      showToast(err.message || 'Yuklanmadi');
-      token = null;
-      localStorage.removeItem(TOKEN_KEY);
-      showLogin();
-    }
+    await loadProducts();
   } else {
-    hideBootLoader();
     showLogin();
   }
 })();

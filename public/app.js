@@ -24,14 +24,6 @@ const SIZE_CHECK_SVG = `<svg class="size-check" width="18" height="18" viewBox="
 
 const $ = (sel) => document.querySelector(sel);
 
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function phoneDigitsOnly(value) {
   return value.replace(/\D/g, '');
 }
@@ -111,10 +103,7 @@ function getPriceForSize(product, size) {
 }
 
 function getUniqueSizes(product) {
-  if (product.sizes?.length) {
-    return product.sizes.map((s) => s.label);
-  }
-  return [...new Set(product.variants.map((v) => v.size))];
+  return orderedSizeLabels(product);
 }
 
 function needsPicker(product) {
@@ -122,7 +111,10 @@ function needsPicker(product) {
 }
 
 function getSizesForScent(product, scent) {
-  return [...new Set(product.variants.filter((v) => v.scent === scent).map((v) => v.size))];
+  const allowed = new Set(
+    product.variants.filter((v) => v.scent === scent).map((v) => v.size).filter(Boolean)
+  );
+  return orderedSizeLabels(product, allowed);
 }
 
 function getScentsForSize(product, size) {
@@ -147,7 +139,7 @@ function renderScentGrid(product, size, selectedScent) {
 
   let html = shown.map((v) => `
     <button type="button" class="scent-option ${v.scent === selectedScent ? 'selected' : ''}" data-scent="${v.scent}">
-      <img src="${v.image}" alt="${v.scent}" onerror="imgFallback(event)">
+      <img src="${imageUrl(v.image)}" alt="${v.scent}" onerror="imgFallback(event)">
     </button>
   `).join('');
 
@@ -188,6 +180,15 @@ function getMinPrice(product) {
   return Math.min(...product.variants.map((v) => v.price));
 }
 
+function hasValidPrice(product) {
+  if (!product.variants?.length) return false;
+  const prices = [
+    ...(product.sizes || []).map((s) => Number(s.price) || 0),
+    ...(product.variants || []).map((v) => Number(v.price) || 0),
+  ].filter((n) => n > 0);
+  return prices.length > 0;
+}
+
 function productMeta(p) {
   const parts = [p.brand, p.category].filter(Boolean);
   if (!parts.length) return '';
@@ -197,6 +198,7 @@ function productMeta(p) {
 function filteredProducts() {
   const q = filterSearch.trim().toLowerCase();
   return PRODUCTS.filter((p) => {
+    if (!hasValidPrice(p)) return false;
     if (filterBrand && p.brand !== filterBrand) return false;
     if (filterCategory && p.category !== filterCategory) return false;
     if (q) {
@@ -207,103 +209,16 @@ function filteredProducts() {
   });
 }
 
-function closeFilterDropdowns() {
-  document.querySelectorAll('.filter-dropdown.is-open').forEach((wrap) => {
-    wrap.classList.remove('is-open');
-    const btn = wrap.querySelector('.filter-dropdown-btn');
-    const menu = wrap.querySelector('.filter-dropdown-menu');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-    if (menu) menu.hidden = true;
-  });
-}
-
-function buildFilterDropdown(id, placeholder, currentValue, options) {
-  const label = currentValue || placeholder;
-  const items = [{ value: '', label: placeholder }, ...options.map((o) => ({ value: o, label: o }))];
-  const menuItems = items.map((item) => `
-    <button
-      type="button"
-      class="filter-dropdown-item${currentValue === item.value ? ' is-selected' : ''}"
-      data-value="${escapeHtml(item.value)}"
-      role="option"
-      aria-selected="${currentValue === item.value}"
-    >
-      <span>${escapeHtml(item.label)}</span>
-      <svg class="filter-dropdown-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-        <path d="M20 6L9 17l-5-5"/>
-      </svg>
-    </button>
-  `).join('');
-
-  return `
-    <div class="filter-dropdown" data-filter-id="${id}">
-      <button type="button" class="filter-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
-        <span class="filter-dropdown-label">${escapeHtml(label)}</span>
-        <svg class="filter-dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M6 9l6 6 6-6"/>
-        </svg>
-      </button>
-      <div class="filter-dropdown-menu" role="listbox" hidden>
-        ${menuItems}
-      </div>
-    </div>
-  `;
-}
-
-function bindFilterDropdownEvents() {
-  const filters = $('#filters');
-  if (filters._dropdownBound) return;
-  filters._dropdownBound = true;
-
-  filters.addEventListener('click', (e) => {
-    if (e.target.closest('.filter-dropdown-menu')) {
-      e.stopPropagation();
-    }
-
-    const btn = e.target.closest('.filter-dropdown-btn');
-    if (btn) {
-      e.stopPropagation();
-      const wrap = btn.closest('.filter-dropdown');
-      const menu = wrap.querySelector('.filter-dropdown-menu');
-      const isOpen = wrap.classList.contains('is-open');
-      closeFilterDropdowns();
-      if (!isOpen) {
-        wrap.classList.add('is-open');
-        btn.setAttribute('aria-expanded', 'true');
-        menu.hidden = false;
-      }
-      return;
-    }
-
-    const item = e.target.closest('.filter-dropdown-item');
-    if (!item) return;
-
-    const wrap = item.closest('.filter-dropdown');
-    const filterId = wrap.dataset.filterId;
-    const value = item.dataset.value;
-    const placeholder = filterId === 'filterBrand' ? 'Barcha brendlar' : 'Barcha kategoriyalar';
-
-    if (filterId === 'filterBrand') filterBrand = value;
-    else filterCategory = value;
-
-    wrap.querySelector('.filter-dropdown-label').textContent = value || placeholder;
-    wrap.querySelectorAll('.filter-dropdown-item').forEach((el) => {
-      const selected = el.dataset.value === value;
-      el.classList.toggle('is-selected', selected);
-      el.setAttribute('aria-selected', selected);
-    });
-
-    closeFilterDropdowns();
-    renderProducts();
-  });
-
-  document.addEventListener('click', closeFilterDropdowns);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeFilterDropdowns();
-  });
-}
-
 function renderFilters() {
+  const brandItems = [
+    { value: '', label: 'Barcha brendlar' },
+    ...orderedCatalogItems(CATALOG.brands).map((b) => ({ value: b, label: b })),
+  ];
+  const catItems = [
+    { value: '', label: 'Barcha kategoriyalar' },
+    ...orderedCatalogItems(CATALOG.categories).map((c) => ({ value: c, label: c })),
+  ];
+
   $('#filters').innerHTML = `
     <div class="search-box">
       <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -313,8 +228,20 @@ function renderFilters() {
       <input type="search" id="searchInput" class="search-input" placeholder="Mahsulotlarni qidirish..." value="${filterSearch}">
     </div>
     <div class="toolbar-filters">
-      ${buildFilterDropdown('filterBrand', 'Barcha brendlar', filterBrand, CATALOG.brands)}
-      ${buildFilterDropdown('filterCategory', 'Barcha kategoriyalar', filterCategory, CATALOG.categories)}
+      ${buildAppSelect({
+        items: brandItems,
+        value: filterBrand,
+        placeholder: 'Barcha brendlar',
+        className: 'filter-app-select',
+        hiddenAttrs: { filter: 'brand' },
+      })}
+      ${buildAppSelect({
+        items: catItems,
+        value: filterCategory,
+        placeholder: 'Barcha kategoriyalar',
+        className: 'filter-app-select',
+        hiddenAttrs: { filter: 'category' },
+      })}
     </div>
   `;
 
@@ -323,16 +250,21 @@ function renderFilters() {
     renderProducts();
   });
 
-  bindFilterDropdownEvents();
+  $('#filters').addEventListener('change', (e) => {
+    const { filter } = e.target.dataset;
+    if (filter === 'brand') {
+      filterBrand = e.target.value;
+      renderProducts();
+    }
+    if (filter === 'category') {
+      filterCategory = e.target.value;
+      renderProducts();
+    }
+  });
 }
 
 function formatPrice(n) {
   return n.toLocaleString('uz-UZ') + " so'm";
-}
-
-function imgFallback(e) {
-  e.target.onerror = null;
-  e.target.src = PLACEHOLDER;
 }
 
 function renderProducts() {
@@ -356,7 +288,7 @@ function renderProducts() {
         <div class="product-name">${p.name}</div>
         <div class="product-preview">
           <img
-            src="${preview.image}"
+            src="${imageUrl(preview.image)}"
             alt="${p.name}"
             loading="lazy"
             onerror="imgFallback(event)"
@@ -377,7 +309,7 @@ function selectVariant(productId, variantId) {
   selectedVariant[productId] = variantId;
 
   const preview = $(`#preview-${productId}`);
-  preview.src = variant.image;
+  preview.src = imageUrl(variant.image);
   preview.onerror = imgFallback;
 
   $(`#price-${productId}`).textContent = formatPrice(variant.price);
@@ -425,7 +357,7 @@ function updatePickerUI() {
   const price = getPriceForSize(product, size);
   const image = getImageForScent(product, scent, size);
 
-  $('#modalPreview').src = image;
+  $('#modalPreview').src = imageUrl(image);
   $('#modalPreview').onerror = imgFallback;
   const meta = [product.brand, product.category].filter(Boolean).join(' · ');
   $('#modalBrand').textContent = meta || '';
@@ -541,7 +473,7 @@ function renderCart() {
 
   container.innerHTML = items.map((item) => `
     <div class="cart-item" data-variant-id="${item.variantId}">
-      <img class="cart-item-img" src="${item.image}" alt="" onerror="imgFallback(event)">
+      <img class="cart-item-img" src="${imageUrl(item.image)}" alt="" onerror="imgFallback(event)">
       <div class="cart-item-info">
         <div class="cart-item-name">${item.name}</div>
         <div class="cart-item-meta">${item.scent} · ${item.size}</div>
@@ -611,7 +543,7 @@ function addFromPicker() {
 
   addToCartFromVariant(product, cartVariant, pickerState.qty);
   renderCart();
-  animateFlyToCart(cartVariant.image, $('#modalPreview'));
+  animateFlyToCart(imageUrl(cartVariant.image), $('#modalPreview'));
 }
 
 function showToast(msg) {
@@ -635,7 +567,7 @@ function animateFlyToCart(imageSrc, sourceEl) {
 
   const flyer = document.createElement('img');
   flyer.className = 'cart-flyer';
-  flyer.src = imageSrc || PLACEHOLDER;
+  flyer.src = imageSrc || '/images/placeholder.svg';
   flyer.alt = '';
   flyer.style.setProperty('--fly-dx', `${endX - startX}px`);
   flyer.style.setProperty('--fly-dy', `${endY - startY}px`);
@@ -702,7 +634,7 @@ function detectLocation() {
     return;
   }
 
-  setLocationLoading(true);
+  status.textContent = 'Lokatsiya aniqlanmoqda...';
   btn.disabled = true;
 
   navigator.geolocation.getCurrentPosition(
@@ -877,10 +809,11 @@ $('#orderForm').addEventListener('submit', async (e) => {
   const phone = `+${phoneDigits}`;
 
   const btn = e.target.querySelector('.order-btn');
-  setButtonLoading(btn, true, 'Yuborilmoqda...');
+  btn.disabled = true;
+  btn.textContent = 'Yuborilmoqda...';
 
   try {
-    const res = await fetch('/api/order', {
+    const res = await fetch(apiUrl('/api/order'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -914,16 +847,16 @@ $('#orderForm').addEventListener('submit', async (e) => {
     showToast('Serverga ulanib bo\'lmadi');
   }
 
-  setButtonLoading(btn, false);
+  btn.disabled = false;
+  btn.textContent = 'Zakaz berish';
 });
 
 async function init() {
-  $('#filters').innerHTML = sectionLoaderHtml('Filtrlarni yuklash...', true);
-  $('#products').innerHTML = sectionLoaderHtml('Mahsulotlar yuklanmoqda...');
+  initAppSelectHandlers();
   try {
     const [productsRes, catalogRes] = await Promise.all([
-      fetch('/api/products'),
-      fetch('/api/catalog'),
+      fetch(apiUrl('/api/products')),
+      fetch(apiUrl('/api/catalog')),
     ]);
     PRODUCTS = await productsRes.json();
     CATALOG = await catalogRes.json();
@@ -932,9 +865,7 @@ async function init() {
     renderProducts();
     renderCart();
   } catch {
-    const errHtml = '<div class="cart-empty">Yuklanmadi</div>';
-    $('#products').innerHTML = errHtml;
-    $('#filters').innerHTML = errHtml;
+    $('#products').innerHTML = '<div class="cart-empty">Yuklanmadi</div>';
   }
 }
 
