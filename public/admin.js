@@ -856,10 +856,13 @@ function render() {
 
 function variantCardTitle(p, v) {
   const name = (p.name || '').trim();
+  const scent = (v.scent || '').trim();
   const size = (v.size || '').trim();
-  if (name && size) return `${name} ${size}`;
-  if (name) return name;
-  if (v.scent) return v.scent;
+  const parts = [];
+  if (name) parts.push(name);
+  if (scent) parts.push(scent);
+  if (size) parts.push(size);
+  if (parts.length) return parts.join(' ');
   return 'Variant';
 }
 
@@ -888,7 +891,18 @@ function variantRow(pi, vi, v, p) {
           <input type="file" accept="image/*" data-action="upload" data-product="${pi}" data-variant="${vi}">
         </label>
         <div class="variant-fields">
-          <input type="hidden" value="${esc(v.scent)}" data-field="scent" data-product="${pi}" data-variant="${vi}">
+          <div class="variant-field">
+            <span class="field-label">Hid nomi</span>
+            <input
+              type="text"
+              class="editor-input"
+              value="${esc(v.scent)}"
+              placeholder="Masalan: EDT, Floral, Clear Men"
+              data-field="scent"
+              data-product="${pi}"
+              data-variant="${vi}"
+            >
+          </div>
           <div class="variant-field">
             <span class="field-label">O'lcham</span>
             ${options}
@@ -1144,6 +1158,9 @@ document.addEventListener('input', (e) => {
 
   if (field === 'scent') {
     products[pi].variants[vi].scent = e.target.value;
+    const card = e.target.closest('.variant-card');
+    const titleEl = card?.querySelector('.variant-card-title');
+    if (titleEl) titleEl.textContent = variantCardTitle(products[pi], products[pi].variants[vi]);
     queueAutoSave();
   }
 });
