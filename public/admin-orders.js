@@ -1,6 +1,6 @@
 const TOKEN_KEY = 'lider_admin_token';
 
-let token = localStorage.getItem(TOKEN_KEY);
+let token = getAdminToken();
 let customers = [];
 let selectedPhone = null;
 let searchQuery = '';
@@ -57,13 +57,10 @@ function formatDate(iso) {
 }
 
 async function checkAuth() {
-  if (!token) return false;
-  try {
-    const { ok } = await api('/api/admin/verify', { headers: authHeaders() });
-    return ok;
-  } catch {
-    return false;
-  }
+  token = getAdminToken();
+  const ok = await verifyAdminSession(token);
+  if (!ok) token = null;
+  return ok;
 }
 
 async function loadCustomers() {
@@ -228,7 +225,7 @@ function bindEvents() {
         body: JSON.stringify({ password }),
       });
       token = t;
-      localStorage.setItem(TOKEN_KEY, token);
+      setAdminToken(token);
       $('#loginScreen').classList.add('hidden');
       $('#ordersApp').classList.remove('hidden');
       await loadCustomers();
@@ -239,7 +236,7 @@ function bindEvents() {
 
   $('#logoutBtn').addEventListener('click', () => {
     token = null;
-    localStorage.removeItem(TOKEN_KEY);
+    setAdminToken(null);
     $('#ordersApp').classList.add('hidden');
     $('#loginScreen').classList.remove('hidden');
     $('#password').value = '';
@@ -271,6 +268,11 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  if (hasAdminToken()) {
+    token = getAdminToken();
+    $('#loginScreen').classList.add('hidden');
+    $('#ordersApp').classList.remove('hidden');
+  }
   if (await checkAuth()) {
     $('#loginScreen').classList.add('hidden');
     $('#ordersApp').classList.remove('hidden');

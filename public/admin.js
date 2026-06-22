@@ -12,7 +12,7 @@ let products = [];
 let catalog = { brands: [], categories: [] };
 let editingIndex = null;
 let productIsNew = false;
-let token = localStorage.getItem(TOKEN_KEY);
+let token = getAdminToken();
 let autoSaveTimer = null;
 let saveInFlight = false;
 let queuedSaveMessage = null;
@@ -178,13 +178,10 @@ function syncVariantPrices(product) {
 }
 
 async function checkAuth() {
-  if (!token) return false;
-  try {
-    const { ok } = await api('/api/admin/verify', { headers: authHeaders() });
-    return ok;
-  } catch {
-    return false;
-  }
+  token = getAdminToken();
+  const ok = await verifyAdminSession(token);
+  if (!ok) token = null;
+  return ok;
 }
 
 async function loadProducts() {
@@ -696,14 +693,26 @@ async function bootstrapProductPage() {
   showProductPageLoader(isNew ? 'Yangi mahsulot ochilmoqda...' : 'Mahsulot yuklanmoqda...');
 
   if (isNew) {
-    const [catalogData, { nextId }] = await Promise.all([
-      api('/api/admin/catalog', { headers: authHeaders() }),
-      api('/api/admin/products/next-id', { headers: authHeaders() }),
-    ]);
-    catalog = catalogData;
-    createNewProductDraft(nextId);
-    render();
-    return;
+    try {
+      const [catalogData, { nextId }] = await Promise.all([
+        api('/api/admin/catalog', { headers: authHeaders() }),
+        api('/api/admin/products/next-id', { headers: authHeaders() }),
+      ]);
+      catalog = catalogData;
+      createNewProductDraft(nextId);
+      render();
+      return;
+    } catch {
+      const [catalogData, allProducts] = await Promise.all([
+        api('/api/admin/catalog', { headers: authHeaders() }),
+        api('/api/admin/products', { headers: authHeaders() }),
+      ]);
+      catalog = catalogData;
+      products = allProducts;
+      createNewProductDraft();
+      render();
+      return;
+    }
   }
 
   const productId = resolveProductIdFromUrl();
@@ -712,16 +721,35 @@ async function bootstrapProductPage() {
     return;
   }
 
-  const [catalogData, product] = await Promise.all([
-    api('/api/admin/catalog', { headers: authHeaders() }),
-    api(`/api/admin/products/${productId}`, { headers: authHeaders() }),
-  ]);
-  catalog = catalogData;
-  products = [product];
-  editingIndex = 0;
-  productIsNew = false;
-  ensureSizes(product);
-  render();
+  try {
+    const [catalogData, product] = await Promise.all([
+      api('/api/admin/catalog', { headers: authHeaders() }),
+      api(`/api/admin/products/${productId}`, { headers: authHeaders() }),
+    ]);
+    catalog = catalogData;
+    products = [product];
+    editingIndex = 0;
+    productIsNew = false;
+    ensureSizes(product);
+    render();
+    return;
+  } catch {
+    const [catalogData, allProducts] = await Promise.all([
+      api('/api/admin/catalog', { headers: authHeaders() }),
+      api('/api/admin/products', { headers: authHeaders() }),
+    ]);
+    const product = allProducts.find((p) => p.id === productId);
+    if (!product) {
+      window.location.replace('/admin');
+      return;
+    }
+    catalog = catalogData;
+    products = [product];
+    editingIndex = 0;
+    productIsNew = false;
+    ensureSizes(product);
+    render();
+  }
 }
 
 function addNewProduct() {
@@ -738,12 +766,16 @@ function renderProductPage() {
 
 async function initProductPage() {
   showProductPageLoader();
-  if (await checkAuth()) {
+  if (hasAdminToken()) {
+    token = getAdminToken();
     showAdmin();
-    await bootstrapProductPage();
-  } else {
-    showLogin();
   }
+  if (!(await checkAuth())) {
+    showLogin();
+    return;
+  }
+  showAdmin();
+  await bootstrapProductPage();
 }
 
 function isNewProductPage() {
@@ -1041,7 +1073,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
       body: JSON.stringify({ password: $('#password').value }),
     });
     token = t;
-    localStorage.setItem(TOKEN_KEY, token);
+    setAdminToken(token);
     showAdmin();
     if (window.__ADMIN_PAGE === 'product') {
       await bootstrapProductPage();
@@ -1055,7 +1087,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
 
 $('#logoutBtn').addEventListener('click', () => {
   token = null;
-  localStorage.removeItem(TOKEN_KEY);
+  setAdminToken(null);
   showLogin();
 });
 
@@ -1408,7 +1440,13 @@ document.addEventListener('click', (e) => {
   initAppSelectHandlers();
   if (window.__ADMIN_PAGE === 'product') {
     await initProductPage();
-  } else if (await checkAuth()) {
+    return;
+  }
+  if (hasAdminToken()) {
+    token = getAdminToken();
+    showAdmin();
+  }
+  if (await checkAuth()) {
     showAdmin();
     await loadProducts();
   } else {

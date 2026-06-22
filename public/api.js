@@ -1,7 +1,40 @@
+const ADMIN_TOKEN_KEY = 'lider_admin_token';
+
 function apiUrl(path) {
   const base = (window.API_BASE || '').replace(/\/$/, '');
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${base}${p}`;
+}
+
+function getAdminToken() {
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
+}
+
+function setAdminToken(value) {
+  if (value) localStorage.setItem(ADMIN_TOKEN_KEY, value);
+  else localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+function hasAdminToken() {
+  return Boolean(getAdminToken());
+}
+
+async function verifyAdminSession(token) {
+  if (!token) return false;
+  try {
+    const res = await fetch(apiUrl('/api/admin/verify'), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      setAdminToken(null);
+      return false;
+    }
+    if (!res.ok) return true;
+    return !!data.ok;
+  } catch {
+    return true;
+  }
 }
 
 function imageUrl(path) {

@@ -2,7 +2,7 @@ const TOKEN_KEY = 'lider_admin_token';
 
 let catalog = { brands: [], categories: [] };
 let products = [];
-let token = localStorage.getItem(TOKEN_KEY);
+let token = getAdminToken();
 let addModalType = null;
 let catalogSearch = '';
 let pointerDrag = null;
@@ -35,13 +35,10 @@ function filterItems(items) {
 }
 
 async function checkAuth() {
-  if (!token) return false;
-  try {
-    const { ok } = await api('/api/admin/verify', { headers: authHeaders() });
-    return ok;
-  } catch {
-    return false;
-  }
+  token = getAdminToken();
+  const ok = await verifyAdminSession(token);
+  if (!ok) token = null;
+  return ok;
 }
 
 async function loadData() {
@@ -336,7 +333,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
       body: JSON.stringify({ password: $('#password').value }),
     });
     token = t;
-    localStorage.setItem(TOKEN_KEY, token);
+    setAdminToken(token);
     showApp();
     $('#catalogContent').innerHTML = sectionLoaderHtml('Brend va kategoriyalar yuklanmoqda...');
     await loadData();
@@ -349,7 +346,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
 
 $('#logoutBtn').addEventListener('click', () => {
   token = null;
-  localStorage.removeItem(TOKEN_KEY);
+  setAdminToken(null);
   showLogin();
 });
 
@@ -422,6 +419,11 @@ $('#addModal').addEventListener('click', (e) => {
 
 (async () => {
   showBootLoader();
+  if (hasAdminToken()) {
+    token = getAdminToken();
+    hideBootLoader();
+    showApp();
+  }
   if (await checkAuth()) {
     hideBootLoader();
     showApp();
@@ -430,9 +432,6 @@ $('#addModal').addEventListener('click', (e) => {
       await loadData();
     } catch (err) {
       showToast(err.message || 'Yuklanmadi');
-      token = null;
-      localStorage.removeItem(TOKEN_KEY);
-      showLogin();
     }
   } else {
     hideBootLoader();
