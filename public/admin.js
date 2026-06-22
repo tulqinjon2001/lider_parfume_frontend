@@ -11,6 +11,7 @@ const ICON_IMAGE = '<svg class="variant-img-icon" viewBox="0 0 24 24" aria-hidde
 let products = [];
 let catalog = { brands: [], categories: [] };
 let editingIndex = null;
+let productIsNew = false;
 let token = localStorage.getItem(TOKEN_KEY);
 let autoSaveTimer = null;
 let saveInFlight = false;
@@ -97,21 +98,26 @@ function confirmDialog({
 }
 
 function deleteProductAt(pi) {
+  const p = products[pi];
+  if (!p) return;
+
+  if (window.__ADMIN_PAGE === 'product') {
+    const doDelete = () => {
+      if (productIsNew) {
+        window.location.href = '/admin';
+        return;
+      }
+      api(`/api/admin/products/${p.id}`, { method: 'DELETE', headers: authHeaders() })
+        .then(() => { window.location.href = '/admin'; })
+        .catch((err) => showToast(err.message));
+    };
+    doDelete();
+    return;
+  }
+
   const [removed] = products.splice(pi, 1);
   if (editingIndex === pi) editingIndex = null;
   else if (editingIndex !== null && editingIndex > pi) editingIndex -= 1;
-
-  if (window.__ADMIN_PAGE === 'product') {
-    saveProducts('Mahsulot o\'chirildi')
-      .then(() => { window.location.href = '/admin'; })
-      .catch((err) => {
-        products.splice(pi, 0, removed);
-        editingIndex = pi;
-        render();
-        showToast(err.message);
-      });
-    return;
-  }
 
   render();
 
@@ -187,6 +193,9 @@ async function loadProducts() {
     api('/api/admin/catalog', { headers: authHeaders() }),
   ]);
   products.forEach(ensureSizes);
+  try {
+    sessionStorage.setItem('lider_admin_products', JSON.stringify(products));
+  } catch { /* ignore quota */ }
   render();
 }
 
@@ -570,7 +579,7 @@ function productCard(p, pi) {
   return `
     <article class="product-card" data-product-index="${pi}">
       <a
-        href="/admin/product?index=${pi}"
+        href="/admin/product?id=${p.id}"
         class="product-card-edit"
         title="Tahrirlash"
         aria-label="Tahrirlash"
@@ -640,17 +649,79 @@ function renderOverview() {
   syncProductSearchInputs();
 }
 
-function createNewProductDraft() {
-  const id = nextProductId();
-  products.push({
+function createNewProductDraft(nextId) {
+  const id = nextId ?? nextProductId();
+  const draft = {
     id,
     name: 'Yangi mahsulot',
     brand: catalog.brands[0] || '',
     category: catalog.categories[0] || '',
     sizes: [{ label: '100ml', price: 0 }],
     variants: [{ id: `${id}-edt-100ml`, scent: 'EDT', size: '100ml', price: 0, image: PLACEHOLDER }],
-  });
-  return products.length - 1;
+  };
+  products = [draft];
+  editingIndex = 0;
+  productIsNew = true;
+  return 0;
+}
+
+function showProductPageLoader(text = 'Mahsulot yuklanmoqda...') {
+  const el = $('#productEditorRoot');
+  if (el) el.innerHTML = sectionLoaderHtml(text);
+}
+
+function resolveProductIdFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const idParam = params.get('id');
+  if (idParam !== null && idParam !== '') {
+    const id = Number(idParam);
+    if (Number.isInteger(id) && id > 0) return id;
+  }
+  const indexParam = params.get('index');
+  if (indexParam !== null && indexParam !== '') {
+    const cached = sessionStorage.getItem('lider_admin_products');
+    if (cached) {
+      try {
+        const list = JSON.parse(cached);
+        const idx = Number(indexParam);
+        if (Number.isInteger(idx) && idx >= 0 && idx < list.length) return list[idx].id;
+      } catch { /* ignore */ }
+    }
+  }
+  return null;
+}
+
+async function bootstrapProductPage() {
+  const isNew = location.pathname.endsWith('/new');
+  showProductPageLoader(isNew ? 'Yangi mahsulot ochilmoqda...' : 'Mahsulot yuklanmoqda...');
+
+  if (isNew) {
+    const [catalogData, { nextId }] = await Promise.all([
+      api('/api/admin/catalog', { headers: authHeaders() }),
+      api('/api/admin/products/next-id', { headers: authHeaders() }),
+    ]);
+    catalog = catalogData;
+    createNewProductDraft(nextId);
+    render();
+    return;
+  }
+
+  const productId = resolveProductIdFromUrl();
+  if (!productId) {
+    window.location.replace('/admin');
+    return;
+  }
+
+  const [catalogData, product] = await Promise.all([
+    api('/api/admin/catalog', { headers: authHeaders() }),
+    api(`/api/admin/products/${productId}`, { headers: authHeaders() }),
+  ]);
+  catalog = catalogData;
+  products = [product];
+  editingIndex = 0;
+  productIsNew = false;
+  ensureSizes(product);
+  render();
 }
 
 function addNewProduct() {
@@ -665,34 +736,8 @@ function renderProductPage() {
   document.title = `${p.name || 'Mahsulot'} — Lider Parfum`;
 }
 
-async function bootstrapProductPage() {
-  const isNew = location.pathname.endsWith('/new');
-  const indexParam = new URLSearchParams(location.search).get('index');
-
-  [products, catalog] = await Promise.all([
-    api('/api/admin/products', { headers: authHeaders() }),
-    api('/api/admin/catalog', { headers: authHeaders() }),
-  ]);
-  products.forEach(ensureSizes);
-
-  if (isNew) {
-    editingIndex = createNewProductDraft();
-    await persistProducts('Mahsulot qo\'shildi');
-  } else if (indexParam !== null && indexParam !== '') {
-    editingIndex = Number(indexParam);
-    if (!Number.isInteger(editingIndex) || editingIndex < 0 || editingIndex >= products.length) {
-      window.location.replace('/admin');
-      return;
-    }
-  } else {
-    window.location.replace('/admin');
-    return;
-  }
-
-  render();
-}
-
 async function initProductPage() {
+  showProductPageLoader();
   if (await checkAuth()) {
     showAdmin();
     await bootstrapProductPage();
@@ -706,7 +751,7 @@ function isNewProductPage() {
 }
 
 function editorTitle(p) {
-  if (isNewProductPage()) return 'Yangi mahsulot';
+  if (productIsNew) return 'Yangi mahsulot';
   return esc(p.name) || 'Mahsulot tahrirlash';
 }
 
@@ -852,15 +897,50 @@ function esc(str) {
   return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-async function saveProducts(message = 'Saqlandi') {
-  products.forEach((p) => {
-    ensureSizes(p);
-    syncVariantPrices(p);
-    p.variants.forEach((v) => {
-      v.id = makeVariantId(p.id, v.scent, v.size);
-      v.price = getSizePrice(p, v.size);
-    });
+function prepareProductForSave(p) {
+  ensureSizes(p);
+  syncVariantPrices(p);
+  p.variants.forEach((v) => {
+    v.id = makeVariantId(p.id, v.scent, v.size);
+    v.price = getSizePrice(p, v.size);
   });
+  return p;
+}
+
+async function saveCurrentProduct(message = 'Saqlandi') {
+  const p = products[editingIndex];
+  prepareProductForSave(p);
+
+  if (productIsNew) {
+    const saved = await api('/api/admin/products', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(p),
+    });
+    products[editingIndex] = saved;
+    productIsNew = false;
+    if (location.pathname.endsWith('/new')) {
+      history.replaceState(null, '', `/admin/product?id=${saved.id}`);
+    }
+  } else {
+    await api(`/api/admin/products/${p.id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(p),
+    });
+    products[editingIndex] = p;
+  }
+
+  if (message) showToast(message);
+}
+
+async function saveProducts(message = 'Saqlandi') {
+  if (window.__ADMIN_PAGE === 'product' && editingIndex !== null) {
+    await saveCurrentProduct(message);
+    return;
+  }
+
+  products.forEach((p) => prepareProductForSave(p));
 
   await api('/api/admin/products', {
     method: 'PUT',
@@ -995,7 +1075,7 @@ document.addEventListener('input', (e) => {
   if (field === 'name') {
     products[Number(index)].name = e.target.value;
     const title = document.getElementById(`editor-title-${index}`);
-    if (title && !isNewProductPage()) {
+    if (title && !productIsNew) {
       title.textContent = e.target.value || 'Mahsulot tahrirlash';
     }
     document.querySelectorAll(`.variant-card[data-product="${index}"]`).forEach((card) => {
@@ -1204,13 +1284,16 @@ document.addEventListener('click', (e) => {
 
   if (action === 'save-product') {
     clearTimeout(autoSaveTimer);
+    const btn = actionEl;
+    setButtonLoading(btn, true, 'Saqlanmoqda...');
     persistProducts('Saqlandi')
       .then(() => {
         if (window.__ADMIN_PAGE === 'product') {
           window.location.href = '/admin';
         }
       })
-      .catch((err) => showToast(err.message));
+      .catch((err) => showToast(err.message))
+      .finally(() => setButtonLoading(btn, false));
     return;
   }
 
